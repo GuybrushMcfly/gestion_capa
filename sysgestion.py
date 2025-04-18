@@ -233,13 +233,29 @@ if st.session_state.get("authentication_status"):
             if cambios_pendientes:
                 if st.button(f"💾 Actualizar {proc_name}"):
                     estado = st.session_state[temp_key]
-                    for i in range(len(pasos)):
-                        col = pasos[i][0]
-                        if estado[col]:
-                            anteriores = [estado[pasos[j][0]] for j in range(i)]
-                            if not all(anteriores):
-                                st.error(f"❌ No se puede marcar '{pasos[i][1]}' sin completar pasos anteriores.")
-                                st.stop()
+                    
+                    try:
+                        with st.spinner("🔄 Sincronizando con la nube..."):
+                            now = datetime.now().isoformat(sep=" ", timespec="seconds")
+                            ws = operacion_segura(lambda: sh.worksheet("actividades" if proc_name == "APROBACION" else "seguimiento"))
+                            header = operacion_segura(lambda: ws.row_values(1))
+                            row_idx = operacion_segura(lambda: ws.find(str(id_act if proc_name == "APROBACION" else comision))).row
+                            for col, _ in pasos:
+                                idx_col = header.index(col) + 1
+                                ucol = f"{col}_user"
+                                tcol = f"{col}_timestamp"
+                                idx_u = header.index(ucol) + 1
+                                idx_t = header.index(tcol) + 1
+                                operacion_segura(lambda: ws.update_cell(row_idx, idx_col, estado[col]))
+                                operacion_segura(lambda: ws.update_cell(row_idx, idx_u, st.session_state["name"]))
+                                operacion_segura(lambda: ws.update_cell(row_idx, idx_t, now))
+                            st.success("✅ Datos actualizados correctamente")
+                            cargar_datos.clear()
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al sincronizar: {str(e)}")
+            else:
+                st.info("✅ No hay cambios para actualizar.")
                 for i in range(len(pasos)):
                     col = pasos[i][0]
                     if estado[col]:
