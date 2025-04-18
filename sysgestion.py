@@ -154,14 +154,14 @@ with st.expander("🛠️ Editar APROBACIÓN ACTIVIDAD"):
                 try:
                     # booleano
                     i_col = header_act.index(col)+1
-                    ws_act.update_cell(row_act, i_col, True)
+                    ws_act.update_cell(row_idx_act, i_col, True)
                     # user
                     u_col = f"{col}_user"; i_u = header_act.index(u_col)+1
-                    ws_act.update_cell(row_act, i_u, st.session_state["name"])
+                    ws_act.update_cell(row_idx_act, i_u, st.session_state["name"])
                     # timestamp
                     t_col = f"{col}_timestamp"; i_t = header_act.index(t_col)+1
                     ts = datetime.now().isoformat(sep=" ",timespec="seconds")
-                    ws_act.update_cell(row_act, i_t, ts)
+                    ws_act.update_cell(row_idx_act, i_t, ts)
                 except Exception as e:
                     errs.append((col,str(e)))
             if errs:
