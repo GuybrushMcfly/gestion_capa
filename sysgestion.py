@@ -72,7 +72,7 @@ pasos_act = [
 
 pasos_campus = [
     ("C_ArmadoAula", "Armado Aula"),
-    ("C_Matriculacion", "Matriculación participantes"),
+    ("C_Matriculacion", "Matriculación<br> participantes"),
     ("C_AperturaCurso", "Apertura Curso"),
     ("C_CierreCurso", "Cierre Curso"),
     ("C_AsistenciaEvaluacion", "Entrega Notas<br> y Asistencia"),
@@ -82,7 +82,7 @@ pasos_dictado = [
     ("D_Difusion", "Difusión"),
     ("D_AsignacionVacantes", "Asignación Vacantes"),
     ("D_Cursada", "Cursada"),
-    ("D_AsistenciaEvaluacion", "Asistencia y Evaluación"),
+    ("D_AsistenciaEvaluacion", "Asistencia<br> y Evaluación"),
     ("D_CreditosSAI", "Créditos SAI"),
     ("D_Liquidacion", "Liquidación"),
 ]
@@ -200,7 +200,7 @@ if st.session_state.get("authentication_status"):
                                      hovertext=[label], hoverinfo="text", showlegend=False))
             fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.2], mode="text",
                                      text=[label], textposition="bottom center",
-                                     textfont=dict(color="white", size=14), showlegend=False))
+                                     textfont=dict(color="white", size=16), showlegend=False))
 
         fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                           yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
