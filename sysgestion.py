@@ -193,11 +193,25 @@ if st.session_state.get("authentication_status"):
             else:
                 clr, ic = color_pendiente, icono["pendiente"]
 
+            usuario = source_row.get(f"{col}_user", "").strip()
+            timestamp = source_row.get(f"{col}_timestamp", "").strip()
+            hover = label
+            if usuario or timestamp:
+                try:
+                    # Convertir string UTC a datetime y ajustar -3 horas
+                    ts_local = datetime.fromisoformat(timestamp) - pd.Timedelta(hours=3)
+                    timestamp_fmt = ts_local.strftime("%d/%m/%Y %H:%M")
+                    hover += f"<br>ULTIMA EDICIÓN:<br>{usuario} – {timestamp_fmt}"
+                except:
+                    hover += f"<br>ULTIMA EDICIÓN:<br>{usuario} – {timestamp}"
+            else:
+                hover += "<br>Sin información de edición"
+
             fig.add_trace(go.Scatter(x=[x[i]], y=[y], mode="markers+text",
                                      marker=dict(size=45, color=clr),
                                      text=[ic], textposition="middle center",
                                      textfont=dict(color="white", size=18),
-                                     hovertext=[label], hoverinfo="text", showlegend=False))
+                                     hovertext=[hover], hoverinfo="text", showlegend=False))
             fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.15], mode="text",
                                      text=[label], textposition="bottom center",
                                      textfont=dict(color="white", size=12), showlegend=False))
@@ -213,7 +227,11 @@ if st.session_state.get("authentication_status"):
                     st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
 
         if proc_name in perms["edit"]:
-            if st.button(f"💾 Actualizar {proc_name}"):
+            original_estado = {col: bool(source_row.get(col, False)) for col, _ in pasos}
+            cambios_pendientes = any(st.session_state[temp_key][col] != original_estado[col] for col, _ in pasos)
+
+            if cambios_pendientes:
+                if st.button(f"💾 Actualizar {proc_name}"):
                 estado = st.session_state[temp_key]
                 for i in range(len(pasos)):
                     col = pasos[i][0]
