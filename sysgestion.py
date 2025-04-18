@@ -232,7 +232,7 @@ if st.session_state.get("authentication_status"):
 
             if cambios_pendientes:
                 if st.button(f"💾 Actualizar {proc_name}"):
-                estado = st.session_state[temp_key]
+                    estado = st.session_state[temp_key]
                 for i in range(len(pasos)):
                     col = pasos[i][0]
                     if estado[col]:
