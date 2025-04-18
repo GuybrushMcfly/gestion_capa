@@ -210,7 +210,7 @@ if st.session_state.get("authentication_status"):
         if proc_name in perms["edit"]:
             with st.expander(f"🛠️ Editar {proc_name}"):
                 for col, label in pasos:
-                st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
+                    st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
 
         if proc_name in perms["edit"]:
             if st.button(f"💾 Actualizar {proc_name}"):
