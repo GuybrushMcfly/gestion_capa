@@ -287,6 +287,13 @@ if st.session_state.get("authentication_status"):
                                     st.error(f"Error actualizando {c}: {m}")
                             else:
                                 st.success(f"✅ {proc_name} actualizado!")
+                                # 1) Forzar borrado del cache
+                                cargar_todas_hojas.clear()
+                                # 2) Recargar desde la función cacheada
+                                df_actividades, df_comisiones, df_seguimiento = cargar_todas_hojas()
+                                # 3) Reconstruir fila_act y fila_seg con los nuevos DataFrames
+                                fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
+                                fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
         else:
             if proc_name in perms["view"]:
                 st.info(f"🔒 No tenés permisos para editar {proc_name}.")
@@ -294,5 +301,5 @@ else:
     if st.session_state.get("authentication_status") is False:
         st.error("❌ Usuario o contraseña incorrectos.")
     else:
-        st.warning("🔒 Ingresá tus credenciales para acceder al dashboard.")
+        st.warning("🔒 Ingresá tus credenciales para acceder.")
     st.stop()
