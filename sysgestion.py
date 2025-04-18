@@ -1,7 +1,7 @@
-import threading                              # ← Necesario para el lock compartido
+import threading
 import json
 from datetime import datetime
-
+import time
 import gspread
 import pandas as pd
 import plotly.graph_objects as go
@@ -40,32 +40,23 @@ def get_sheet():
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=60)
 def cargar_datos():
-    """
-    Esta función se cachea durante 60 segundos.
-    Si se llama de nuevo antes de que expire el cache,
-    devolverá los DataFrames sin pedir nada a la API.
-    """
-    hoja = get_sheet()
-    df_actividades = pd.DataFrame(hoja.worksheet("actividades").get_all_records())
-    df_comisiones  = pd.DataFrame(hoja.worksheet("comisiones").get_all_records())
-    df_seguimiento = pd.DataFrame(hoja.worksheet("seguimiento").get_all_records())
-    return df_actividades, df_comisiones, df_seguimiento
-
-# Usar el lock también al leer los datos:
-def cargar_datos():
     with get_global_lock():
         try:
             hoja = get_sheet()
-            df_actividades = pd.DataFrame(hoja.worksheet("actividades").get_all_records())
-            df_comisiones = pd.DataFrame(hoja.worksheet("comisiones").get_all_records())
-            df_seguimiento = pd.DataFrame(hoja.worksheet("seguimiento").get_all_records())
+            # Leer todas las hojas en una sola operación
+            worksheets = hoja.worksheets()
+            data = {ws.title: ws.get_all_records() for ws in worksheets if ws.title in ["actividades", "comisiones", "seguimiento"]}
+            
+            df_actividades = pd.DataFrame(data["actividades"])
+            df_comisiones = pd.DataFrame(data["comisiones"])
+            df_seguimiento = pd.DataFrame(data["seguimiento"])
             return df_actividades, df_comisiones, df_seguimiento
         except Exception as e:
             st.error(f"Error al cargar datos: {e}")
             return None, None, None
 
 # ────────────────────────────────────────────────
-# 2) DEFINICIÓN DE PASOS Y PERMISOS
+# 3) DEFINICIÓN DE PASOS Y PERMISOS
 # ────────────────────────────────────────────────
 pasos_act = [
     ("A_Diseño",                "Diseño"),
@@ -120,7 +111,6 @@ authenticator = stauth.Authenticate(
 authenticator.login()
 
 if st.session_state.get("authentication_status"):
-    # → Solo aquí está garantizado que existe username
     authenticator.logout("Cerrar sesión", "sidebar")
     st.sidebar.success(f"Hola, {st.session_state['name']}")
     st.markdown("<h1 style='font-size:30px; color:white;'>Gestión Capacitación DCYCP</h1>",
@@ -128,13 +118,13 @@ if st.session_state.get("authentication_status"):
 
     username = st.session_state.get("username")
     user_cfg = config["credentials"]["usernames"].get(username, {})
-    role     = user_cfg.get("role", "INVITADO")
-    perms    = PERMISOS.get(role, PERMISOS["INVITADO"])
+    role = user_cfg.get("role", "INVITADO")
+    perms = PERMISOS.get(role, PERMISOS["INVITADO"])
 
     # ────────────────────────────────────────────────
-    # 3) CARGA DE DATOS DESDE GOOGLE SHEETS
+    # 4) CARGA DE DATOS DESDE GOOGLE SHEETS
     # ────────────────────────────────────────────────
-    sh = get_sheet()  # ← aquí quitamos el parámetro
+    sh = get_sheet()
     df_actividades, df_comisiones, df_seguimiento = cargar_datos()
     if df_actividades is None:
         st.error("No se pudieron cargar los datos. Por favor, intenta de nuevo.")
@@ -147,42 +137,45 @@ if st.session_state.get("authentication_status"):
     )
 
     # ────────────────────────────────────────────────
-    # 4) SELECCIÓN DE CURSO Y COMISIÓN
+    # 5) SELECCIÓN DE CURSO Y COMISIÓN
     # ────────────────────────────────────────────────
-    curso    = st.selectbox("Seleccioná un Curso:", df_actividades["NombreActividad"].unique())
-    coms     = df_completo.loc[df_completo["NombreActividad"] == curso, "Id_Comision"].unique().tolist()
+    curso = st.selectbox("Seleccioná un Curso:", df_actividades["NombreActividad"].unique())
+    coms = df_completo.loc[df_completo["NombreActividad"] == curso, "Id_Comision"].unique().tolist()
     comision = st.selectbox("Seleccioná una Comisión:", coms)
 
-    id_act   = df_actividades.loc[df_actividades["NombreActividad"] == curso, "Id_Actividad"].iloc[0]
+    id_act = df_actividades.loc[df_actividades["NombreActividad"] == curso, "Id_Actividad"].iloc[0]
     fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
     fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
 
-    ws_act      = sh.worksheet("actividades")
-    header_act  = ws_act.row_values(1)
+    ws_act = sh.worksheet("actividades")
+    header_act = ws_act.row_values(1)
     row_idx_act = ws_act.find(str(id_act)).row
 
-    ws_seg      = sh.worksheet("seguimiento")
-    header_seg  = ws_seg.row_values(1)
+    ws_seg = sh.worksheet("seguimiento")
+    header_seg = ws_seg.row_values(1)
     row_idx_seg = ws_seg.find(str(comision)).row
 
     # Colores e íconos
     color_completado = "#4DB6AC"
-    color_actual     = "#FF8A65"
-    color_pendiente  = "#D3D3D3"
-    icono            = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
+    color_actual = "#FF8A65"
+    color_pendiente = "#D3D3D3"
+    icono = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
 
     # ────────────────────────────────────────────────
-    # 5) ITERAR SOBRE CADA PROCESO (vista + edición condicional)
+    # 6) ITERAR SOBRE CADA PROCESO (vista + edición condicional)
     # ────────────────────────────────────────────────
     for proc_name, pasos in PROCESOS.items():
-        # 5.1) Vista (solo si tiene permiso de ver)
         if proc_name not in perms["view"]:
             continue
 
+        # Usar estado de sesión para manejar cambios temporales
+        if f"temp_{proc_name}" not in st.session_state:
+            st.session_state[f"temp_{proc_name}"] = None
+
         # Calcular índice actual
         source_row = fila_act if proc_name == "APROBACION" else fila_seg
-        bools      = [bool(source_row[col]) for col, _ in pasos]
-        idx        = len(bools) if all(bools) else next(i for i,v in enumerate(bools) if not v)
+        bools = [bool(source_row[col]) for col, _ in pasos]
+        idx = len(bools) if all(bools) else next(i for i,v in enumerate(bools) if not v)
 
         # Crear figura
         fig = go.Figure()
@@ -198,15 +191,18 @@ if st.session_state.get("authentication_status"):
 
         # Puntos + iconos
         for i,(col,label) in enumerate(pasos):
-            if i < idx:
+            # Verificar si hay cambios temporales en el estado de sesión
+            if st.session_state[f"temp_{proc_name}"] and col in st.session_state[f"temp_{proc_name}"]:
+                clr, ic = color_completado, icono["finalizado"]
+            elif i < idx:
                 clr, ic = color_completado, icono["finalizado"]
             elif i == idx:
-                clr, ic = color_actual,     icono["actual"]
+                clr, ic = color_actual, icono["actual"]
             else:
-                clr, ic = color_pendiente,  icono["pendiente"]
+                clr, ic = color_pendiente, icono["pendiente"]
 
             user = source_row.get(f"{col}_user","")
-            ts   = source_row.get(f"{col}_timestamp","")
+            ts = source_row.get(f"{col}_timestamp","")
             hover = f"{label}<br>Por: {user}<br>El: {ts}"
 
             fig.add_trace(go.Scatter(
@@ -230,7 +226,7 @@ if st.session_state.get("authentication_status"):
         )
         st.plotly_chart(fig)
 
-        # 5.2) Edición (solo si tiene permiso de editar)
+        # 6.2) Edición (solo si tiene permiso de editar)
         if proc_name in perms["edit"]:
             with st.expander(f"🛠️ Editar {proc_name}"):
                 form_key = f"form_{proc_name}_{id_act}_{comision}"
@@ -242,7 +238,7 @@ if st.session_state.get("authentication_status"):
                             label,
                             value=marcado,
                             disabled=marcado,
-                            key=f"{proc_name}_{id_act if proc_name=='APROBACION' else comision}_{col}"
+                            key=f"chk_{proc_name}_{id_act if proc_name=='APROBACION' else comision}_{col}"
                         )
                         if chk and not marcado:
                             cambios.append(col)
@@ -252,48 +248,98 @@ if st.session_state.get("authentication_status"):
                         if not cambios:
                             st.warning("No seleccionaste ningún paso para actualizar.")
                         else:
-                            errores = []
-                            for col in cambios:
-                                try:
-                                    # Determinar hoja y header según proc
-                                    ws, hdr, ridx = (
-                                        (ws_act, header_act, row_idx_act)
-                                        if proc_name == "APROBACION"
-                                        else (ws_seg, header_seg, row_idx_seg)
-                                    )
-                                    # Booleano
+                            # Guardar cambios temporales para mostrar inmediatamente
+                            st.session_state[f"temp_{proc_name}"] = cambios
+                            
+                            try:
+                                # Determinar hoja y header según proc
+                                ws, hdr, ridx = (
+                                    (ws_act, header_act, row_idx_act)
+                                    if proc_name == "APROBACION"
+                                    else (ws_seg, header_seg, row_idx_seg)
+                                )
+                                
+                                # Preparar todas las actualizaciones
+                                requests = []
+                                now = datetime.now().isoformat(sep=" ", timespec="seconds")
+                                
+                                for col in cambios:
+                                    # Actualizar el campo booleano
                                     idx_col = hdr.index(col) + 1
-                                    ws.update_cell(ridx, idx_col, True)
-                                    # Usuario
+                                    requests.append({
+                                        'updateCells': {
+                                            'range': {
+                                                'sheetId': ws.id,
+                                                'startRowIndex': ridx-1,
+                                                'endRowIndex': ridx,
+                                                'startColumnIndex': idx_col-1,
+                                                'endColumnIndex': idx_col
+                                            },
+                                            'rows': [{
+                                                'values': [{'userEnteredValue': {'boolValue': True}}]
+                                            }],
+                                            'fields': 'userEnteredValue'
+                                        }
+                                    })
+                                    
+                                    # Actualizar usuario
                                     ucol = f"{col}_user"
                                     idx_u = hdr.index(ucol) + 1
-                                    ws.update_cell(ridx, idx_u, st.session_state["name"])
-                                    # Timestamp
-                                    tcol  = f"{col}_timestamp"
+                                    requests.append({
+                                        'updateCells': {
+                                            'range': {
+                                                'sheetId': ws.id,
+                                                'startRowIndex': ridx-1,
+                                                'endRowIndex': ridx,
+                                                'startColumnIndex': idx_u-1,
+                                                'endColumnIndex': idx_u
+                                            },
+                                            'rows': [{
+                                                'values': [{'userEnteredValue': {'stringValue': st.session_state["name"]}}]
+                                            }],
+                                            'fields': 'userEnteredValue'
+                                        }
+                                    })
+                                    
+                                    # Actualizar timestamp
+                                    tcol = f"{col}_timestamp"
                                     idx_t = hdr.index(tcol) + 1
-                                    now   = datetime.now().isoformat(sep=" ", timespec="seconds")
-                                    ws.update_cell(ridx, idx_t, now)
-                                except Exception as e:
-                                    errores.append((col, str(e)))
-
-                            # Recarga filas
-                            df_actividades = pd.DataFrame(ws_act.get_all_records())
-                            df_seguimiento = pd.DataFrame(ws_seg.get_all_records())
-                            fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
-                            fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
-
-                            if errores:
-                                for c,m in errores:
-                                    st.error(f"Error actualizando {c}: {m}")
-                            else:
-                                st.success(f"✅ {proc_name} actualizado!")
-                                # 1) Forzar borrado del cache
-                                # cargar_todas_hojas.clear()
-                                # 2) Recargar desde la función cacheada
-                                # df_actividades, df_comisiones, df_seguimiento = cargar_todas_hojas()
-                                # 3) Reconstruir fila_act y fila_seg con los nuevos DataFrames
-                                # fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
-                                # fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
+                                    requests.append({
+                                        'updateCells': {
+                                            'range': {
+                                                'sheetId': ws.id,
+                                                'startRowIndex': ridx-1,
+                                                'endRowIndex': ridx,
+                                                'startColumnIndex': idx_t-1,
+                                                'endColumnIndex': idx_t
+                                            },
+                                            'rows': [{
+                                                'values': [{'userEnteredValue': {'stringValue': now}}]
+                                            }],
+                                            'fields': 'userEnteredValue'
+                                        }
+                                    })
+                                
+                                # Ejecutar todas las actualizaciones en una sola llamada
+                                if requests:
+                                    # Dividir las solicitudes en lotes más pequeños si son muchas
+                                    batch_size = 30  # Google permite hasta 60 solicitudes por lote
+                                    for i in range(0, len(requests), batch_size):
+                                        batch = requests[i:i + batch_size]
+                                        ws.spreadsheet.batch_update({'requests': batch})
+                                        if i + batch_size < len(requests):
+                                            time.sleep(1)  # Pequeña pausa entre lotes
+                                
+                                st.success(f"✅ {proc_name} actualizado correctamente!")
+                                
+                                # Forzar recarga de datos después de 2 segundos
+                                time.sleep(2)
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"Error al actualizar: {str(e)}")
+                                # Limpiar cambios temporales si hay error
+                                st.session_state[f"temp_{proc_name}"] = None
         else:
             if proc_name in perms["view"]:
                 st.info(f"🔒 No tenés permisos para editar {proc_name}.")
