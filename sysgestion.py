@@ -44,14 +44,22 @@ elif st.session_state["authentication_status"] is None:
 st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
 
-# ---- CARGA DE SHEETS ----
-scope = ["https://www.googleapis.com/auth/spreadsheets"]
-creds = Credentials.from_service_account_info(
-    json.loads(st.secrets["GOOGLE_CREDS"]),
-    scopes=scope
-)
-gc = gspread.authorize(creds)
-sh = gc.open_by_key("1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk")
+@st.cache_resource
+def get_sheet(sheet_key: str):
+    # 1) Autorización
+    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(
+        json.loads(st.secrets["GOOGLE_CREDS"]),
+        scopes=scope
+    )
+    gc = gspread.authorize(creds)
+    # 2) Abrir la hoja UNA SOLA VEZ
+    return gc.open_by_key(sheet_key)
+
+# luego en el cuerpo:
+sheet_key = "1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk"
+sh = get_sheet(sheet_key)
+
 
 # Leer hojas
 df_actividades = pd.DataFrame(sh.worksheet("actividades").get_all_records())
