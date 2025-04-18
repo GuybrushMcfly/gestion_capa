@@ -25,7 +25,7 @@ def get_global_lock():
     return threading.Lock()
 
 @st.cache_resource
-def get_sheet():  # ya no recibe sheet_key
+def get_sheet():
     with get_global_lock():
         creds_dict = json.loads(st.secrets["GOOGLE_CREDS"])
         creds = Credentials.from_service_account_info(
@@ -33,8 +33,23 @@ def get_sheet():  # ya no recibe sheet_key
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         gc = gspread.authorize(creds)
-        # aquí puedes poner tu KEY directamente o usar una constante
         return gc.open_by_key("1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk")
+
+# ────────────────────────────────────────────────
+# 2) CACHE DE DATOS (1 minuto)                  
+# ────────────────────────────────────────────────
+@st.cache_data(ttl=60)
+def cargar_datos():
+    """
+    Esta función se cachea durante 60 segundos.
+    Si se llama de nuevo antes de que expire el cache,
+    devolverá los DataFrames sin pedir nada a la API.
+    """
+    hoja = get_sheet()
+    df_actividades = pd.DataFrame(hoja.worksheet("actividades").get_all_records())
+    df_comisiones  = pd.DataFrame(hoja.worksheet("comisiones").get_all_records())
+    df_seguimiento = pd.DataFrame(hoja.worksheet("seguimiento").get_all_records())
+    return df_actividades, df_comisiones, df_seguimiento
 
 # Usar el lock también al leer los datos:
 def cargar_datos():
