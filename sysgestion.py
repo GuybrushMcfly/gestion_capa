@@ -3,6 +3,7 @@ from google.oauth2.service_account import Credentials
 import gspread
 import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
@@ -219,5 +220,5 @@ for proc, pasos in procesos.items():
             df_seguimiento = pd.DataFrame(ws_seg.get_all_records())
             fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
             st.success("✅ Cambios guardados.")
-            #st.session_state[f"editar_{proc}"] = False
-            st.session_state[f"editar_{proc}"] = False  # resetear edición al guardar
+            st.session_state[f"editar_{proc}"] = False
+            
