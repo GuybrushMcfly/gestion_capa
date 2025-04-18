@@ -207,10 +207,6 @@ if st.session_state.get("authentication_status"):
                           height=180, margin=dict(l=20, r=20, t=30, b=0))
         st.plotly_chart(fig)
 
-      #  with st.expander(f"🛠️ Editar {proc_name}"):
-      #      for col, label in pasos:
-      #          st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
-
         if proc_name in perms["edit"]:
             with st.expander(f"🛠️ Editar {proc_name}"):
                 for col, label in pasos:
