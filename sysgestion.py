@@ -173,9 +173,8 @@ if st.session_state.get("authentication_status"):
         bools = [st.session_state[temp_key][col] for col, _ in pasos]
         idx = len(bools) if all(bools) else next((i for i, v in enumerate(bools) if not v), 0)
         fig = go.Figure()
-        #x, y = list(range(len(pasos))), 1
-        x = [i * 0.4 for i in range(len(pasos))]  # o 0.7, según qué tan juntos los quieras
-        y = 1
+        x, y = list(range(len(pasos))), 1
+        
         color_completado = "#4DB6AC"
         color_actual = "#FF8A65"
         color_pendiente = "#D3D3D3"
@@ -211,7 +210,7 @@ if st.session_state.get("authentication_status"):
         st.plotly_chart(fig, config={"displayModeBar": False}) #ocultar iconos de las barras
 
         if proc_name in perms["edit"]:
-            with st.expander(f"🛠️ Editar {proc_name}"):
+            with st.expander(f"🛠️ EDITAR {proc_name}"):
                 for col, label in pasos:
                     st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
 
