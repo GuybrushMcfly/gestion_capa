@@ -89,13 +89,11 @@ ws_seg = sh.worksheet("seguimiento")
 header_seg = ws_seg.row_values(1)
 row_idx_seg = ws_seg.find(str(comision)).row
 
-# Colores e íconos
-color_completado = "#4DB6AC"
-color_actual     = "#FF8A65"
-color_pendiente  = "#D3D3D3"
+# Colores e iconos
+col_ok, col_now, col_ng = "#4DB6AC", "#FF8A65", "#D3D3D3"
 icono = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
 
-# ---- STEPPER FIJO DE LA ACTIVIDAD ----
+# ---- STEPPER FIJO: APROBACIÓN ACTIVIDAD ----
 pasos_act = [
     ("A_Diseño","Diseño"),
     ("A_AutorizacionINAP","Autorización INAP"),
@@ -103,136 +101,179 @@ pasos_act = [
     ("A_TramitacionExpediente","Tramitación Expediente"),
     ("A_DictamenINAP","Dictamen INAP"),
 ]
+bools = [ bool(fila_act[c]) for c,_ in pasos_act ]
+idx   = len(bools) if all(bools) else next(i for i,v in enumerate(bools) if not v)
 
-bools_act = [bool(fila_act[col]) for col,_ in pasos_act]
-idx_act = len(bools_act) if all(bools_act) else next(i for i,v in enumerate(bools_act) if not v)
-
-fig_act = go.Figure()
-x_act = list(range(len(pasos_act))); y=1
+fig = go.Figure(); x = list(range(len(pasos_act))); y=1
+# líneas
 for i in range(len(pasos_act)-1):
-    clr = color_completado if i<idx_act else color_pendiente
-    fig_act.add_trace(go.Scatter(x=[x_act[i],x_act[i+1]], y=[y,y],
-                                 mode="lines", line=dict(color=clr,width=8), showlegend=False))
-for i,(col,label) in enumerate(pasos_act):
+    clr = col_ok if i<idx else col_ng
+    fig.add_trace(go.Scatter(x=[x[i],x[i+1]], y=[y,y], mode="lines",
+                              line=dict(color=clr,width=8), showlegend=False))
+# círculos
+for i,(c,label) in enumerate(pasos_act):
     clr,ic = (
-        (color_completado, icono["finalizado"])
-        if i<idx_act else
-        (color_actual,     icono["actual"]) if i==idx_act else
-        (color_pendiente,  icono["pendiente"])
+        (col_ok,   icono["finalizado"]) if i<idx else
+        (col_now,  icono["actual"])     if i==idx else
+        (col_ng,   icono["pendiente"])
     )
-    user = fila_act.get(f"{col}_user","")
-    ts   = fila_act.get(f"{col}_timestamp","")
+    user = fila_act.get(f"{c}_user","")
+    ts   = fila_act.get(f"{c}_timestamp","")
     hover = f"{label}<br>Por: {user}<br>El: {ts}"
-    fig_act.add_trace(go.Scatter(x=[x_act[i]], y=[y],
-                                 mode="markers+text",
-                                 marker=dict(size=45,color=clr),
-                                 text=[ic], textposition="middle center",
-                                 textfont=dict(color="white",size=18),
-                                 hovertext=[hover], hoverinfo="text",
-                                 showlegend=False))
-    fig_act.add_trace(go.Scatter(x=[x_act[i]], y=[y-0.15],
-                                 mode="text",
-                                 text=[label],
-                                 textposition="bottom center",
-                                 textfont=dict(color="white",size=12),
-                                 showlegend=False))
-fig_act.update_layout(title=dict(text="🔹 APROBACIÓN ACTIVIDAD (Actividad)",x=0.01,xanchor="left",font=dict(size=16)),
-                      xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
-                      yaxis=dict(showgrid=False,zeroline=False,showticklabels=False,range=[0.3,1.2]),
-                      height=180, margin=dict(l=20,r=20,t=30,b=0))
-st.plotly_chart(fig_act)
+    fig.add_trace(go.Scatter(x=[x[i]], y=[y], mode="markers+text",
+                              marker=dict(size=45,color=clr),
+                              text=[ic], textposition="middle center",
+                              textfont=dict(color="white",size=18),
+                              hovertext=[hover], hoverinfo="text", showlegend=False))
+    fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.15], mode="text",
+                              text=[label], textposition="bottom center",
+                              textfont=dict(color="white",size=12), showlegend=False))
 
-# ---- FORM PARA EDITAR ESTADOS ----
-procesos = {
-    "CAMPUS": [
-        ("C_ArmadoAula","Armado Aula"),
-        ("C_Matriculacion","Matriculación participantes"),
-        ("C_AperturaCurso","Apertura Curso"),
-        ("C_CierreCurso","Cierre Curso"),
-        ("C_AsistenciaEvaluacion","Entrega Notas y Asistencia"),
-    ],
-    "DICTADO COMISION": [
-        ("D_Difusion","Difusión"),
-        ("D_AsignacionVacantes","Asignación Vacantes"),
-        ("D_Cursada","Cursada"),
-        ("D_AsistenciaEvaluacion","Asistencia y Evaluación"),
-        ("D_CreditosSAI","Créditos SAI"),
-        ("D_Liquidacion","Liquidación"),
-    ]
-}
+fig.update_layout(
+    title=dict(text="🔹 APROBACIÓN ACTIVIDAD", x=0.01, xanchor="left", font=dict(size=16)),
+    xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
+    yaxis=dict(showgrid=False,zeroline=False,showticklabels=False,range=[0.3,1.2]),
+    height=180, margin=dict(l=20,r=20,t=30,b=0)
+)
+st.plotly_chart(fig)
 
-with st.form("editor_form"):
-    st.markdown("## 🛠️ Editar estados de Comisión")
-    cambios = []
-    for proc, pasos in procesos.items():
-        st.subheader(proc)
-        for col,label in pasos:
-            val = bool(fila_seg[col])
-            new = st.checkbox(label, value=val, disabled=val,
-                              key=f"{comision}_{col}")
-            if new and not val:
-                cambios.append(col)
-    submitted = st.form_submit_button("💾 Actualizar cambios")
+# ---- FORMULARIOS SEPARADOS POR PROCESO ----
 
-if submitted and cambios:
-    errs = []
-    for col in cambios:
-        ws, hdr, ridx = (ws_act,  header_act, row_idx_act) if col.startswith("A_") else (ws_seg, header_seg, row_idx_seg)
-        try:
-            # booleano
-            cidx = hdr.index(col)+1
-            ws.update_cell(ridx, cidx, True)
-            # user
-            ucol = f"{col}_user"; uidx = hdr.index(ucol)+1
-            ws.update_cell(ridx, uidx, st.session_state["name"])
-            # timestamp
-            tcol = f"{col}_timestamp"; tidx = hdr.index(tcol)+1
-            now = datetime.now().isoformat(sep=" ", timespec="seconds")
-            ws.update_cell(ridx, tidx, now)
-        except Exception as e:
-            errs.append((col,str(e)))
-    # recarga
-    df_actividades = pd.DataFrame(ws_act.get_all_records())
-    df_seguimiento = pd.DataFrame(ws_seg.get_all_records())
-    fila_act = df_actividades.loc[df_actividades["Id_Actividad"]==id_act].iloc[0]
-    fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"]==comision].iloc[0]
-    if errs:
-        for c,m in errs: st.error(f"Error {c}: {m}")
-    else:
-        st.success("✅ Cambios guardados.")
+# 1) APROBACIÓN ACTIVIDAD (editar)
+with st.expander("🛠️ Editar APROBACIÓN ACTIVIDAD"):
+    with st.form("form_aprob"):
+        cambios = []
+        for c,label in pasos_act:
+            val = bool(fila_act[c])
+            chk = st.checkbox(label, value=val, disabled=val, key=f"fa_{c}")
+            if chk and not val:
+                cambios.append(c)
+        if st.form_submit_button("💾 Actualizar APROBACIÓN"):
+            errs=[]
+            for col in cambios:
+                try:
+                    # booleano
+                    i_col = header_act.index(col)+1
+                    ws_act.update_cell(row_act, i_col, True)
+                    # user
+                    u_col = f"{col}_user"; i_u = header_act.index(u_col)+1
+                    ws_act.update_cell(row_act, i_u, st.session_state["name"])
+                    # timestamp
+                    t_col = f"{col}_timestamp"; i_t = header_act.index(t_col)+1
+                    ts = datetime.now().isoformat(sep=" ",timespec="seconds")
+                    ws_act.update_cell(row_act, i_t, ts)
+                except Exception as e:
+                    errs.append((col,str(e)))
+            if errs:
+                for c,msg in errs: st.error(f"{c}: {msg}")
+            else:
+                st.success("✅ Aprobación actualizada!")
+                # refrescar
+                df_act = pd.DataFrame(ws_act.get_all_records())
+                fila_act = df_act.loc[df_act["Id_Actividad"]==id_act].iloc[0]
+
+# 2) CAMPUS (editar)
+pasos_campus = [
+    ("C_ArmadoAula","Armado Aula"),
+    ("C_Matriculacion","Matriculación participantes"),
+    ("C_AperturaCurso","Apertura Curso"),
+    ("C_CierreCurso","Cierre Curso"),
+    ("C_AsistenciaEvaluacion","Entrega Notas y Asistencia"),
+]
+with st.expander("🛠️ Editar CAMPUS"):
+    with st.form("form_campus"):
+        cambios = []
+        for c,label in pasos_campus:
+            val = bool(fila_seg[c])
+            chk = st.checkbox(label, value=val, disabled=val, key=f"fc_{c}")
+            if chk and not val:
+                cambios.append(c)
+        if st.form_submit_button("💾 Actualizar CAMPUS"):
+            errs=[]
+            for col in cambios:
+                try:
+                    i_col = header_seg.index(col)+1
+                    ws_seg.update_cell(row_seg, i_col, True)
+                    u_col = f"{col}_user"; i_u = header_seg.index(u_col)+1
+                    ws_seg.update_cell(row_seg, i_u, st.session_state["name"])
+                    t_col = f"{col}_timestamp"; i_t = header_seg.index(t_col)+1
+                    ts = datetime.now().isoformat(sep=" ",timespec="seconds")
+                    ws_seg.update_cell(row_seg, i_t, ts)
+                except Exception as e:
+                    errs.append((col,str(e)))
+            if errs:
+                for c,msg in errs: st.error(f"{c}: {msg}")
+            else:
+                st.success("✅ Campus actualizado!")
+                df_seg = pd.DataFrame(ws_seg.get_all_records())
+                fila_seg = df_seg.loc[df_seg["Id_Comision"]==comision].iloc[0]
+
+# 3) DICTADO COMISIÓN (editar)
+pasos_dictado = [
+    ("D_Difusion","Difusión"),
+    ("D_AsignacionVacantes","Asignación Vacantes"),
+    ("D_Cursada","Cursada"),
+    ("D_AsistenciaEvaluacion","Asistencia y Evaluación"),
+    ("D_CreditosSAI","Créditos SAI"),
+    ("D_Liquidacion","Liquidación"),
+]
+with st.expander("🛠️ Editar DICTADO COMISIÓN"):
+    with st.form("form_dictado"):
+        cambios = []
+        for c,label in pasos_dictado:
+            val = bool(fila_seg[c])
+            chk = st.checkbox(label, value=val, disabled=val, key=f"fd_{c}")
+            if chk and not val:
+                cambios.append(c)
+        if st.form_submit_button("💾 Actualizar DICTADO"):
+            errs=[]
+            for col in cambios:
+                try:
+                    i_col = header_seg.index(col)+1
+                    ws_seg.update_cell(row_seg, i_col, True)
+                    u_col = f"{col}_user"; i_u = header_seg.index(u_col)+1
+                    ws_seg.update_cell(row_seg, i_u, st.session_state["name"])
+                    t_col = f"{col}_timestamp"; i_t = header_seg.index(t_col)+1
+                    ts = datetime.now().isoformat(sep=" ",timespec="seconds")
+                    ws_seg.update_cell(row_seg, i_t, ts)
+                except Exception as e:
+                    errs.append((col,str(e)))
+            if errs:
+                for c,msg in errs: st.error(f"{c}: {msg}")
+            else:
+                st.success("✅ Dictado actualizado!")
+                df_seg = pd.DataFrame(ws_seg.get_all_records())
+                fila_seg = df_seg.loc[df_seg["Id_Comision"]==comision].iloc[0]
 
 # ---- STEPPER DINÁMICO DE COMISIÓN ----
 st.markdown("---")
 st.markdown("## 📊 Avance de Comisión")
-for proc, pasos in procesos.items():
-    bools = [bool(fila_seg[col]) for col,_ in pasos]
-    idx = len(bools) if all(bools) else next(i for i,v in enumerate(bools) if not v)
+for proc, pasos in [("CAMPUS", pasos_campus), ("DICTADO COMISIÓN", pasos_dictado)]:
+    bools = [bool(fila_seg[c]) for c,_ in pasos]
+    idx   = len(bools) if all(bools) else next(i for i,v in enumerate(bools) if not v)
     fig = go.Figure(); x=list(range(len(pasos))); y=1
     for i in range(len(pasos)-1):
-        clr = color_completado if i<idx else color_pendiente
-        fig.add_trace(go.Scatter(x=[x[i],x[i+1]], y=[y,y], mode="lines",
-                                 line=dict(color=clr,width=8), showlegend=False))
-    for i,(col,label) in enumerate(pasos):
+        clr = col_ok if i<idx else col_ng
+        fig.add_trace(go.Scatter(x=[x[i],x[i+1]],y=[y,y], mode="lines",
+                                 line=dict(color=clr,width=8),showlegend=False))
+    for i,(c,label) in enumerate(pasos):
         clr,ic = (
-            (color_completado, icono["finalizado"])
-            if i<idx else
-            (color_actual,     icono["actual"]) if i==idx else
-            (color_pendiente,  icono["pendiente"])
+            (col_ok,   icono["finalizado"]) if i<idx else
+            (col_now,  icono["actual"])     if i==idx else
+            (col_ng,   icono["pendiente"])
         )
-        user = fila_seg.get(f"{col}_user","")
-        ts   = fila_seg.get(f"{col}_timestamp","")
+        user = fila_seg.get(f"{c}_user",""); ts = fila_seg.get(f"{c}_timestamp","")
         hover = f"{label}<br>Por: {user}<br>El: {ts}"
-        fig.add_trace(go.Scatter(x=[x[i]], y=[y], mode="markers+text",
+        fig.add_trace(go.Scatter(x=[x[i]],y=[y],mode="markers+text",
                                  marker=dict(size=45,color=clr),
-                                 text=[ic], textposition="middle center",
+                                 text=[ic],textposition="middle center",
                                  textfont=dict(color="white",size=18),
-                                 hovertext=[hover], hoverinfo="text", showlegend=False))
-        fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.15], mode="text",
-                                 text=[label], textposition="bottom center",
-                                 textfont=dict(color="white",size=12),
-                                 showlegend=False))
+                                 hovertext=[hover],hoverinfo="text",showlegend=False))
+        fig.add_trace(go.Scatter(x=[x[i]],y=[y-0.15],mode="text",
+                                 text=[label],textposition="bottom center",
+                                 textfont=dict(color="white",size=12),showlegend=False))
     fig.update_layout(
-        title=dict(text=f"🔹 {proc}", x=0.01, xanchor="left", font=dict(size=16)),
+        title=dict(text=f"🔹 {proc}",x=0.01,xanchor="left",font=dict(size=16)),
         xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
         yaxis=dict(showgrid=False,zeroline=False,showticklabels=False,range=[0.3,1.2]),
         height=180, margin=dict(l=20,r=20,t=30,b=0)
