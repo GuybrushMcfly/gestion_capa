@@ -19,6 +19,9 @@ st.sidebar.image("logo-cap.png", use_container_width=True)
 modo = st.get_option("theme.base")
 color_texto = "#000000" if modo == "light" else "#FFFFFF"
 
+# Constante para evitar 429
+t_WAIT_SECONDS = 5
+
 # ────────────────────────────────────────────────
 # 1) FUNCIONES MEJORADAS CON MANEJO DE ERRORES
 # ────────────────────────────────────────────────
@@ -27,11 +30,10 @@ def get_global_lock():
     return threading.Lock()
 
 def operacion_segura(operacion, max_reintentos=3, delay_base=1):
-    """Ejecuta operaciones con reintentos inteligentes"""
     for intento in range(max_reintentos):
         try:
             return operacion()
-        except APIError as e:
+        except APIError:
             if intento == max_reintentos - 1:
                 raise
             espera = delay_base * (2 ** intento) + random.uniform(0, 0.5)
@@ -46,76 +48,72 @@ def get_sheet():
                 creds_dict,
                 scopes=["https://www.googleapis.com/auth/spreadsheets"]
             )
-            return gspread.authorize(creds).open_by_key("1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk")
+            return gspread.authorize(creds).open_by_key(
+                "1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk"
+            )
     return operacion_segura(_get_sheet)
 
 # ────────────────────────────────────────────────
-# 2) CACHE DE DATOS CON REINTENTOS
+# 2) CACHE DE DATOS
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=60)
 def cargar_datos():
-    def _cargar_datos():
+    def _cargar():
         with get_global_lock():
-            try:
-                hoja = get_sheet()
-                hojas_necesarias = ["actividades", "comisiones", "seguimiento"]
-                data = {}
-                for nombre in hojas_necesarias:
-                    ws = operacion_segura(lambda: hoja.worksheet(nombre))
-                    data[nombre] = operacion_segura(lambda: ws.get_all_records())
-                return (
-                    pd.DataFrame(data["actividades"]),
-                    pd.DataFrame(data["comisiones"]),
-                    pd.DataFrame(data["seguimiento"])
-                )
-            except Exception as e:
-                st.error(f"Error al cargar datos: {e}")
-                return None, None, None
-    return operacion_segura(_cargar_datos)
+            hoja = get_sheet()
+            names = ["actividades","comisiones","seguimiento"]
+            data = {}
+            for n in names:
+                ws = operacion_segura(lambda: hoja.worksheet(n))
+                data[n] = operacion_segura(lambda: ws.get_all_records())
+            return (
+                pd.DataFrame(data["actividades"]),
+                pd.DataFrame(data["comisiones"]),
+                pd.DataFrame(data["seguimiento"])
+            )
+    try:
+        return operacion_segura(_cargar)
+    except Exception as e:
+        st.error(f"Error al cargar datos: {e}")
+        return None, None, None
 
 # ────────────────────────────────────────────────
-# 3) DEFINICIÓN DE PASOS Y PERMISOS
+# 3) PASOS Y PERMISOS
 # ────────────────────────────────────────────────
 pasos_act = [
-    ("A_Diseño", "Diseño"),
-    ("A_AutorizacionINAP", "Autorización INAP"),
-    ("A_CargaSAI", "Carga SAI"),
-    ("A_TramitacionExpediente", "Tramitación Expediente"),
-    ("A_DictamenINAP", "Dictamen INAP"),
+    ("A_Diseño","Diseño"),
+    ("A_AutorizacionINAP","Autorización INAP"),
+    ("A_CargaSAI","Carga SAI"),
+    ("A_TramitacionExpediente","Tramitación Expediente"),
+    ("A_DictamenINAP","Dictamen INAP"),
 ]
 pasos_campus = [
-    ("C_ArmadoAula", "Armado Aula"),
-    ("C_Matriculacion", "Matriculación participantes"),
-    ("C_AperturaCurso", "Apertura Curso"),
-    ("C_CierreCurso", "Cierre Curso"),
-    ("C_AsistenciaEvaluacion", "Entrega Notas y Asistencia"),
+    ("C_ArmadoAula","Armado Aula"),
+    ("C_Matriculacion","Matriculación participantes"),
+    ("C_AperturaCurso","Apertura Curso"),
+    ("C_CierreCurso","Cierre Curso"),
+    ("C_AsistenciaEvaluacion","Entrega Notas y Asistencia"),
 ]
 pasos_dictado = [
-    ("D_Difusion", "Difusión"),
-    ("D_AsignacionVacantes", "Asignación Vacantes"),
-    ("D_Cursada", "Cursada"),
-    ("D_AsistenciaEvaluacion", "Asistencia y Evaluación"),
-    ("D_CreditosSAI", "Créditos SAI"),
-    ("D_Liquidacion", "Liquidación"),
+    ("D_Difusion","Difusión"),
+    ("D_AsignacionVacantes","Asignación Vacantes"),
+    ("D_Cursada","Cursada"),
+    ("D_AsistenciaEvaluacion","Asistencia y Evaluación"),
+    ("D_CreditosSAI","Créditos SAI"),
+    ("D_Liquidacion","Liquidación"),
 ]
-PROCESOS = {
-    "APROBACION": pasos_act,
-    "CAMPUS":   pasos_campus,
-    "DICTADO":  pasos_dictado,
-}
+PROCESOS = {"APROBACION":pasos_act,"CAMPUS":pasos_campus,"DICTADO":pasos_dictado}
 PERMISOS = {
-    "ADMIN":   {"view": set(PROCESOS), "edit": set(PROCESOS)},
-    "CAMPUS":  {"view": {"CAMPUS", "DICTADO"}, "edit": {"CAMPUS"}},
-    "DISEÑO":  {"view": {"APROBACION"}, "edit": {"APROBACION"}},
-    "DICTADO": {"view": set(PROCESOS), "edit": {"DICTADO"}},
-    "INVITADO":{"view": set(PROCESOS), "edit": set()},
+    "ADMIN":   {"view":set(PROCESOS),"edit":set(PROCESOS)},
+    "CAMPUS":  {"view":{"CAMPUS","DICTADO"},"edit":{"CAMPUS"}},
+    "DISEÑO":  {"view":{"APROBACION"},"edit":{"APROBACION"}},
+    "DICTADO": {"view":set(PROCESOS),"edit":{"DICTADO"}},
+    "INVITADO":{"view":set(PROCESOS),"edit":set()},
 }
 
-# ---- CARGAR CONFIGURACIÓN DE USUARIOS ----
-with open("config.yaml") as file:
-    config = yaml.load(file, Loader=SafeLoader)
-
-# ---- AUTENTICACIÓN ----
+# Cargar config y auth
+with open("config.yaml") as f:
+    config = yaml.load(f,SafeLoader)
 authenticator = stauth.Authenticate(
     credentials=config["credentials"],
     cookie_name=config["cookie"]["name"],
@@ -123,238 +121,132 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=config["cookie"]["expiry_days"]
 )
 authenticator.login()
-
 if not st.session_state.get("authentication_status"):
     if st.session_state.get("authentication_status") is False:
         st.error("❌ Usuario o contraseña incorrectos.")
     else:
-        st.warning("🔒 Ingresá tus credenciales para acceder.")
+        st.warning("🔒 Ingresá tus credenciales.")
     st.stop()
-
-# Usuario autenticado
-authenticator.logout("Cerrar sesión", "sidebar")
+# Auth ok
+authenticator.logout("Cerrar sesión","sidebar")
 st.sidebar.success(f"Hola, {st.session_state['name']}")
-st.markdown("<h1 style='font-size:30px; color:white;'>Gestión Capacitación DCYCP</h1>", unsafe_allow_html=True)
-
+st.markdown("<h1 style='font-size:30px;color:white;'>Gestión Capacitación DCYCP</h1>",unsafe_allow_html=True)
 username = st.session_state.get("username")
-role = config["credentials"]["usernames"].get(username, {}).get("role", "INVITADO")
-perms = PERMISOS.get(role, PERMISOS["INVITADO"])
+role = config["credentials"]["usernames"].get(username,{}).get("role","INVITADO")
+perms = PERMISOS.get(role,PERMISOS["INVITADO"])
 
-# ────────────────────────────────────────────────
-# 4) CARGA DE DATOS
-# ────────────────────────────────────────────────
+# Carga datos
 try:
+    sh,df_act,df_com,df_seg = None, *cargar_datos()
     sh = operacion_segura(get_sheet)
-    df_actividades, df_comisiones, df_seguimiento = cargar_datos()
-    if df_actividades is None:
-        st.stop()
-    df_completo = (
-        df_comisiones
-        .merge(df_actividades[["Id_Actividad","NombreActividad"]], on="Id_Actividad", how="left")
-        .merge(df_seguimiento, on="Id_Comision", how="left")
-    )
+    if df_act is None: st.stop()
+    df_comp = df_com.merge(df_act[["Id_Actividad","NombreActividad"]],on="Id_Actividad").merge(df_seg,on="Id_Comision")
 except Exception as e:
-    st.error(f"Error crítico al cargar datos: {e}")
+    st.error(f"Error crítico: {e}")
     st.stop()
 
-# ────────────────────────────────────────────────
-# 5) INTERFAZ DE USUARIO
-# ────────────────────────────────────────────────
-cursos = df_actividades["NombreActividad"].unique().tolist()
-curso = st.selectbox("Seleccioná un Curso:", cursos)
-
+# Selecciones
+cursos = df_act["NombreActividad"].unique().tolist()
+curso = st.selectbox("Seleccioná un Curso:",cursos)
 if f"comisiones_{curso}" not in st.session_state:
-    st.session_state[f"comisiones_{curso}"] = df_completo.loc[
-        df_completo["NombreActividad"] == curso, "Id_Comision"
-    ].unique().tolist()
-comision = st.selectbox("Seleccioná una Comisión:", st.session_state[f"comisiones_{curso}"])
-
+    st.session_state[f"comisiones_{curso}"] = df_comp[df_comp["NombreActividad"]==curso]["Id_Comision"].unique().tolist()
+comision = st.selectbox("Seleccioná una Comisión:",st.session_state[f"comisiones_{curso}"])
+# Filas
 try:
-    id_act = df_actividades.loc[df_actividades["NombreActividad"]==curso,"Id_Actividad"].iloc[0]
-    fila_act = df_actividades[df_actividades["Id_Actividad"]==id_act].iloc[0]
-    fila_seg = df_seguimiento[df_seguimiento["Id_Comision"]==comision].iloc[0]
+    id_act = df_act[df_act["NombreActividad"]==curso]["Id_Actividad"].iloc[0]
+    fila_act = df_act[df_act["Id_Actividad"]==id_act].iloc[0]
+    fila_seg = df_seg[df_seg["Id_Comision"]==comision].iloc[0]
 except:
     st.error("No hay datos para esa selección.")
     st.stop()
-
-# hojas y metadatos
-ws_act = operacion_segura(lambda: sh.worksheet("actividades"))
+# Hojas\	ws_act = operacion_segura(lambda: sh.worksheet("actividades"))
 header_act = operacion_segura(lambda: ws_act.row_values(1))
 row_idx_act = operacion_segura(lambda: ws_act.find(str(id_act))).row
-
 ws_seg = operacion_segura(lambda: sh.worksheet("seguimiento"))
 header_seg = operacion_segura(lambda: ws_seg.row_values(1))
 row_idx_seg = operacion_segura(lambda: ws_seg.find(str(comision))).row
 
-# estilos
-color_completado = "#4DB6AC"
-color_actual     = "#FF8A65"
-color_pendiente  = "#D3D3D3"
-icono = {"finalizado":"✓","actual":"⏳","pendiente":"○"}
+# Estilos
+color_ok="#4DB6AC";color_now="#FF8A65";color_noe="#D3D3D3"
+icono={"finalizado":"✓","actual":"⏳","pendiente":"○"}
 
-# ────────────────────────────────────────────────
-# 6) VISUALIZACIÓN Y EDICIÓN DE PROCESOS
-# ────────────────────────────────────────────────
-for proc_name, pasos in PROCESOS.items():
-    if proc_name not in perms["view"]:
-        continue
-
-    # inicializar temp y tiempos
-    if f"temp_{proc_name}" not in st.session_state:
-        st.session_state[f"temp_{proc_name}"] = []
-    if "last_update" not in st.session_state:
-        st.session_state["last_update"] = 0.0
-
-    source_row = fila_act if proc_name=="APROBACION" else fila_seg
-    ws          = ws_act if proc_name=="APROBACION" else ws_seg
-    header      = header_act if proc_name=="APROBACION" else header_seg
-    row_idx     = row_idx_act if proc_name=="APROBACION" else row_idx_seg
-
-    # estado actual (DataFrame o temp)
-    bools = [ bool(source_row[col]) or (col in st.session_state[f"temp_{proc_name}"]) for col,_ in pasos ]
-    idx   = len(bools) if all(bools) else next(i for i,v in enumerate(bools) if not v)
-
-    # graficar progreso
-    x, y = list(range(len(pasos))), 1
-    fig = go.Figure()
-    for i in range(len(pasos)-1):
-        clr = color_completado if i<idx else color_pendiente
-        fig.add_trace(go.Scatter(
-            x=[x[i],x[i+1]], y=[y,y], mode="lines",
-            line=dict(color=clr,width=8), showlegend=False
-        ))
-    for i,(col,label) in enumerate(pasos):
-        if col in st.session_state[f"temp_{proc_name}"] or i<idx:
-            clr, ic = color_completado, icono["finalizado"]
-        elif i==idx:
-            clr, ic = color_actual, icono["actual"]
-        else:
-            clr, ic = color_pendiente, icono["pendiente"]
-        user = source_row.get(f"{col}_user","")
-        ts   = source_row.get(f"{col}_timestamp","")
-        hover = f"{label}<br>Por: {user}<br>El: {ts}"
-        fig.add_trace(go.Scatter(
-            x=[x[i]], y=[y], mode="markers+text",
-            marker=dict(size=45, color=clr),
-            text=[ic], textposition="middle center",
-            textfont=dict(color="white", size=18),
-            hovertext=[hover], hoverinfo="text", showlegend=False
-        ))
-        fig.add_trace(go.Scatter(
-            x=[x[i]], y=[y-0.15], mode="text",
-            text=[label], textposition="bottom center",
-            textfont=dict(color="white", size=12), showlegend=False
-        ))
-    fig.update_layout(
-        title=dict(text=f"🔹 {proc_name}", x=0.01, xanchor="left", font=dict(size=16)),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
-        height=180, margin=dict(l=20,r=20,t=30,b=0)
-    )
-    st.plotly_chart(fig)
-
-    # edición si tiene permiso
-    if proc_name in perms["edit"]:
-        with st.expander(f"🛠️ Editar {proc_name}"):
-            form_key = f"form_{proc_name}_{id_act}_{comision}"
-            with st.form(form_key):
-                cambios = []
-                for col,label in pasos:
-                    estado = bool(source_row[col]) or (col in st.session_state[f"temp_{proc_name}"])
-                    chk = st.checkbox(label, value=estado, key=f"chk_{proc_name}_{col}")
-                    if chk and not estado:
-                        cambios.append(col)
-
-                submitted = st.form_submit_button(f"💾 Actualizar {proc_name}")
-                if submitted:
-                    ahora = time.time()
-                    # 3) prevención de 429: mínimo 5s entre envíos
-                    if ahora - st.session_state["last_update"] < 5:
-                        st.warning("⏳ Aguardá unos segundos antes del próximo cambio.")
-                    else:
-                        # 2) validar secuencia
-                        validos = []
-                        invalidos = []
-                        for col in cambios:
-                            j = [c for c,_ in pasos].index(col)
-                            # asegurar que todos los pasos anteriores estén completados
-                            if all( bool(source_row[pasos[k][0]]) or pasos[k][0] in st.session_state[f"temp_{proc_name}"]
-                                    for k in range(j) ):
-                                validos.append(col)
-                            else:
-                                invalidos.append(col)
-                        if invalidos:
-                            primeros = [pasos[[c for c,_ in pasos].index(c)][1] for c in invalidos]
-                            st.warning(f"No podés completar {', '.join(primeros)} antes de los anteriores.")
-                        if not validos:
-                            st.info("No hay cambios válidos para grabar.")
+# Loop procesos
+try:
+    for proc,pasos in PROCESOS.items():
+        if proc not in perms["view"]: continue
+        # init estado tiempo
+        if f"temp_{proc}" not in st.session_state: st.session_state[f"temp_{proc}"]=[]
+        if "last_update" not in st.session_state: st.session_state["last_update"]=0.0
+        # fuente
+        src = fila_act if proc=="APROBACION" else fila_seg
+        ws,header,row = (ws_act,header_act,row_idx_act) if proc=="APROBACION" else (ws_seg,header_seg,row_idx_seg)
+        # progreso
+        b = [bool(src[c]) or c in st.session_state[f"temp_{proc}"] for c,_ in pasos]
+        idx = len(b) if all(b) else next(i for i,v in enumerate(b) if not v)
+        # graficar
+        fig=go.Figure();X=list(range(len(pasos)));Y=1
+        for i in range(len(pasos)-1):cl=color_ok if i<idx else color_noe;fig.add_trace(go.Scatter(x=[X[i],X[i+1]],y=[Y,Y],mode="lines",line=dict(color=cl,width=8),showlegend=False))
+        for i,(c,l) in enumerate(pasos):
+            if c in st.session_state[f"temp_{proc}"] or i<idx:cl,ic=color_ok,icono["finalizado"]
+            elif i==idx:cl,ic=color_now,icono["actual"]
+            else:cl,ic=color_noe,icono["pendiente"]
+            u=src.get(f"{c}_user","");ts=src.get(f"{c}_timestamp","")
+            hover=f"{l}<br>Por: {u}<br>El: {ts}"
+            fig.add_trace(go.Scatter(x=[X[i]],y=[Y],mode="markers+text",marker=dict(size=45,color=cl),text=[ic],textposition="middle center",textfont=dict(color="white",size=18),hovertext=[hover],hoverinfo="text",showlegend=False))
+            fig.add_trace(go.Scatter(x=[X[i]],y=[Y-0.15],mode="text",text=[l],textposition="bottom center",textfont=dict(color="white",size=12),showlegend=False))
+        fig.update_layout(title=dict(text=f"🔹 {proc}",x=0.01,xanchor="left",font=dict(size=16)),xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),yaxis=dict(showgrid=False,zeroline=False,showticklabels=False,range=[0.3,1.2]),height=180,margin=dict(l=20,r=20,t=30,b=0))
+        st.plotly_chart(fig)
+        # editar
+        if proc in perms["edit"]:
+            with st.expander(f"🛠️ Editar {proc}"):
+                with st.form(f"form_{proc}_{id_act}_{comision}"):
+                    cambios=[]
+                    for c,l in pasos:
+                        est=bool(src[c]) or c in st.session_state[f"temp_{proc}"]
+                        chk=st.checkbox(l,value=est,key=f"chk_{proc}_{c}")
+                        if chk and not est: cambios.append(c)
+                    sub=st.form_submit_button(f"💾 Actualizar {proc}")
+                    if sub:
+                        now=time.time()
+                        if now-st.session_state["last_update"]<t_WAIT_SECONDS:
+                            st.warning("⏳ Aguardá unos segundos antes del próximo cambio.")
                         else:
-                            # marcar temp
-                            st.session_state[f"temp_{proc_name}"].extend(validos)
-                            st.session_state["last_update"] = ahora
-                            # sincronizar con Sheets
-                            try:
-                                with st.spinner(f"🔄 Sincronizando {len(validos)} paso(s)..."):
-                                    now_ts = datetime.now().isoformat(sep=" ", timespec="seconds")
-                                    requests = []
-                                    for col in validos:
-                                        # bool
-                                        i_col = header.index(col)+1
-                                        requests.append({
-                                            'updateCells':{
-                                                'range':{
-                                                    'sheetId': ws.id,
-                                                    'startRowIndex': row_idx-1,
-                                                    'endRowIndex': row_idx,
-                                                    'startColumnIndex': i_col-1,
-                                                    'endColumnIndex': i_col
-                                                },
-                                                'rows':[{'values':[{'userEnteredValue':{'boolValue':True}}]}],
-                                                'fields':'userEnteredValue'
-                                            }
-                                        })
-                                        # user
-                                        ucol = f"{col}_user"; i_u = header.index(ucol)+1
-                                        requests.append({
-                                            'updateCells':{
-                                                'range':{
-                                                    'sheetId': ws.id,
-                                                    'startRowIndex': row_idx-1,
-                                                    'endRowIndex': row_idx,
-                                                    'startColumnIndex': i_u-1,
-                                                    'endColumnIndex': i_u
-                                                },
-                                                'rows':[{'values':[{'userEnteredValue':{'stringValue':st.session_state["name"]}}]}],
-                                                'fields':'userEnteredValue'
-                                            }
-                                        })
-                                        # ts
-                                        tcol = f"{col}_timestamp"; i_t = header.index(tcol)+1
-                                        requests.append({
-                                            'updateCells':{
-                                                'range':{
-                                                    'sheetId': ws.id,
-                                                    'startRowIndex': row_idx-1,
-                                                    'endRowIndex': row_idx,
-                                                    'startColumnIndex': i_t-1,
-                                                    'endColumnIndex': i_t
-                                                },
-                                                'rows':[{'values':[{'userEnteredValue':{'stringValue':now_ts}}]}],
-                                                'fields':'userEnteredValue'
-                                            }
-                                        })
-                                    # batch por 30 y pausas
-                                    for i in range(0, len(requests), 30):
-                                        operacion_segura(lambda: ws.spreadsheet.batch_update({'requests':requests[i:i+30]}))
-                                        if i+30 < len(requests):
-                                            time.sleep(1)
-                                st.toast("✅ Actualizado correctamente!", icon="✅")
-                                time.sleep(1)
-                                st.experimental_rerun()
-                            except Exception as e:
-                                st.error(f"Error de sincronización: {e}")
-                                st.session_state[f"temp_{proc_name}"] = []
-    else:
-        if proc_name in perms["view"]:
-            st.info(f"🔒 No tenés permisos para editar {proc_name}.")
+                            validos=[];invalidos=[]
+                            for c in cambios:
+                                j=[x for x,_ in pasos].index(c)
+                                if all(bool(src[pasos[k][0]]) or pasos[k][0] in st.session_state[f"temp_{proc}"] for k in range(j)): validos.append(c)
+                                else: invalidos.append(c)
+                            if invalidos:
+                                nombres=[pasos[[x for x,_ in pasos].index(x)][1] for x in invalidos]
+                                st.warning(f"No podés completar {', '.join(nombres)} antes de los anteriores.")
+                            if validos:
+                                st.session_state[f"temp_{proc}"].extend(validos)
+                                st.session_state["last_update"]=now
+                                try:
+                                    with st.spinner(f"🔄 Sincronizando {len(validos)} paso(s)..."):
+                                        ts_iso=datetime.now().isoformat(sep=" ",timespec="seconds")
+                                        reqs=[]
+                                        for c in validos:
+                                            i_c=header.index(c)+1
+                                            reqs.append({'updateCells':{'range':{'sheetId':ws.id,'startRowIndex':row-1,'endRowIndex':row,'startColumnIndex':i_c-1,'endColumnIndex':i_c},'rows':[{'values':[{'userEnteredValue':{'boolValue':True}}]}],'fields':'userEnteredValue'}})
+                                            uc=f"{c}_user";i_u=header.index(uc)+1
+                                            reqs.append({'updateCells':{'range':{'sheetId':ws.id,'startRowIndex':row-1,'endRowIndex':row,'startColumnIndex':i_u-1,'endColumnIndex':i_u},'rows':[{'values':[{'userEnteredValue':{'stringValue':st.session_state['name']}}]}],'fields':'userEnteredValue'}})
+                                            tc=f"{c}_timestamp";i_t=header.index(tc)+1
+                                            reqs.append({'updateCells':{'range':{'sheetId':ws.id,'startRowIndex':row-1,'endRowIndex':row,'startColumnIndex':i_t-1,'endColumnIndex':i_t},'rows':[{'values':[{'userEnteredValue':{'stringValue':ts_iso}}]}],'fields':'userEnteredValue'}})
+                                        for i in range(0,len(reqs),30):
+                                            operacion_segura(lambda: ws.spreadsheet.batch_update({'requests':reqs[i:i+30]}))
+                                            if i+30<len(reqs): time.sleep(1)
+                                    # Recargar datos después de 1 segundo y rerun
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error al sincronizar: {e}")
+                                    st.session_state[f"temp_{proc}"]=[]
+        else:
+            if proc in perms["view"]:
+                st.info(f"🔒 No tenés permisos para editar {proc}.")
+except Exception as e:
+    st.error(f"Error inesperado: {e}")
+    st.stop()
 
+# Ya manejamos auth arriba, no hay else final
