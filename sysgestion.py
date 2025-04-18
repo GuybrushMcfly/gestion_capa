@@ -242,8 +242,8 @@ if st.session_state.get("authentication_status"):
                         st.rerun()
                 except Exception as e:
                     st.error(f"Error al sincronizar: {str(e)}")
-        else:
-            st.info(f"🔒 No tenés permisos para editar {proc_name}.")
+    #    else:
+    #        st.info(f"🔒 No tenés permisos para editar {proc_name}.")
 
 else:
     if st.session_state.get("authentication_status") is False:
