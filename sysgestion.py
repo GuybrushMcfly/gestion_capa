@@ -208,7 +208,7 @@ if st.session_state.get("authentication_status"):
         color_completado = "#4DB6AC"
         color_actual = "#FF8A65"
         color_pendiente = "#D3D3D3"
-        icono = {"finalizado": "⚪", "actual": "⏳", "pendiente": "⚪"}
+        icono = {"finalizado": "✓", "actual": "⏳", "pendiente": "○"}
 
         # ────────────────────────────────────────────────
         # 6) VISUALIZACIÓN Y EDICIÓN DE PROCESOS
@@ -279,36 +279,43 @@ if st.session_state.get("authentication_status"):
             )
             st.plotly_chart(fig)
 
-            # Panel de edición
+            # 6.2) Edición (solo si tiene permiso de editar)
             if proc_name in perms["edit"]:
                 with st.expander(f"🛠️ Editar {proc_name}"):
                     form_key = f"form_{proc_name}_{id_act}_{comision}"
                     with st.form(form_key):
                         cambios = []
                         for col, label in pasos:
-                            estado_actual = bool(source_row[col]) or (col in st.session_state[f"temp_{proc_name}"])
-                            if not estado_actual:
-                                if st.checkbox(label, key=f"chk_{proc_name}_{col}"):
-                                    cambios.append(col)
+                            estado_actual = bool(source_row[col])
+                            # Checkbox siempre visible, pero solo permite marcar pasos no completados
+                            chk = st.checkbox(
+                                label,
+                                value=estado_actual,
+                                disabled=estado_actual,
+                                key=f"chk_{proc_name}_{id_act if proc_name=='APROBACION' else comision}_{col}"
+                            )
+                            # Solo agregar a cambios si está marcado y no estaba completado antes
+                            if chk and not estado_actual:
+                                cambios.append(col)
 
                         submitted = st.form_submit_button(f"💾 Actualizar {proc_name}")
                         if submitted:
                             if not cambios:
                                 st.warning("No seleccionaste ningún paso para actualizar.")
                             else:
-                                # Actualización visual inmediata
-                                st.session_state[f"temp_{proc_name}"].extend(cambios)
-                                st.rerun()
-
-                                # Operación en segundo plano
-                                try:
-                                    with st.spinner(f"🔄 Sincronizando {len(cambios)} paso(s) con la nube..."):
-                                        # Preparar actualizaciones
-                                        now = datetime.now().isoformat(sep=" ", timespec="seconds")
+                                # 1. Mostrar spinner con tiempo de ejecución
+                                with st.spinner(f"🔄 Sincronizando {len(cambios)} paso(s) con la nube...", show_time=True):
+                                    # 2. Actualización visual temporal
+                                    st.session_state[f"temp_{proc_name}"].extend(cambios)
+                                    
+                                    try:
+                                        # 3. Operación con Google Sheets
+                                        # Preparar todas las actualizaciones
                                         requests = []
+                                        now = datetime.now().isoformat(sep=" ", timespec="seconds")
                                         
                                         for col in cambios:
-                                            # Campo booleano
+                                            # Actualizar el campo booleano
                                             idx_col = header.index(col) + 1
                                             requests.append({
                                                 'updateCells': {
@@ -326,7 +333,7 @@ if st.session_state.get("authentication_status"):
                                                 }
                                             })
                                             
-                                            # Usuario
+                                            # Actualizar usuario
                                             ucol = f"{col}_user"
                                             idx_u = header.index(ucol) + 1
                                             requests.append({
@@ -345,7 +352,7 @@ if st.session_state.get("authentication_status"):
                                                 }
                                             })
                                             
-                                            # Timestamp
+                                            # Actualizar timestamp
                                             tcol = f"{col}_timestamp"
                                             idx_t = header.index(tcol) + 1
                                             requests.append({
@@ -364,29 +371,40 @@ if st.session_state.get("authentication_status"):
                                                 }
                                             })
                                         
-                                        # Ejecutar en lotes
+                                        # Ejecutar en lotes con manejo de errores
                                         batch_size = 30
                                         for i in range(0, len(requests), batch_size):
-                                            operacion_segura(
-                                                lambda: ws.spreadsheet.batch_update({'requests': requests[i:i+batch_size]})
-                                            )
-                                            if i + batch_size < len(requests):
-                                                time.sleep(1)
+                                            try:
+                                                ws.spreadsheet.batch_update({'requests': requests[i:i+batch_size]})
+                                                if i + batch_size < len(requests):
+                                                    time.sleep(1)  # Pequeña pausa entre lotes
+                                            except Exception as e:
+                                                st.error(f"Error al actualizar lote {i//batch_size + 1}: {str(e)}")
+                                                raise
                                         
-                                        # Limpiar cambios temporales después de éxito
+                                        # Notificación de éxito
+                                        st.toast(
+                                            f"""✅ {proc_name} actualizado!
+                                            \nPasos completados: {len(cambios)}
+                                            \nHora: {datetime.now().strftime('%H:%M:%S')}""",
+                                            icon="✅"
+                                        )
+                                        
+                                        # Limpiar cambios temporales y forzar recarga
                                         st.session_state[f"temp_{proc_name}"] = []
-                                        st.toast(f"✅ {proc_name} actualizado correctamente!", icon="✅")
-                                        
-                                        # Recargar datos después de 1 segundo
-                                        time.sleep(1)
+                                        time.sleep(1)  # Breve pausa para mostrar el mensaje
                                         st.rerun()
-                                
-                                except Exception as e:
-                                    st.error(f"Error al sincronizar: {str(e)}")
-                                    st.session_state[f"temp_{proc_name}"] = []
-            else:
-                if proc_name in perms["view"]:
-                    st.info(f"🔒 No tenés permisos para editar {proc_name}.")
+                                    
+                                    except Exception as e:
+                                        st.error(f"🛑 Error al sincronizar: {str(e)}")
+                                        # Revertir cambios visuales manteniendo los completados
+                                        st.session_state[f"temp_{proc_name}"] = [
+                                            col for col in st.session_state[f"temp_{proc_name}"] 
+                                            if col not in cambios
+                                        ]
+        else:
+            if proc_name in perms["view"]:
+                st.info(f"🔒 No tenés permisos para editar {proc_name}.")
 
     except Exception as e:
         st.error(f"Error inesperado: {str(e)}")
