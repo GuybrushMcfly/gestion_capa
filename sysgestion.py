@@ -230,9 +230,9 @@ if st.session_state.get("authentication_status"):
             original_estado = {col: bool(source_row.get(col, False)) for col, _ in pasos}
             cambios_pendientes = any(st.session_state[temp_key][col] != original_estado[col] for col, _ in pasos)
 
+            estado = st.session_state[temp_key]
             if cambios_pendientes:
                 if st.button(f"💾 Actualizar {proc_name}"):
-                    estado = st.session_state[temp_key]
                     
                     try:
                         with st.spinner("🔄 Sincronizando con la nube..."):
@@ -256,13 +256,6 @@ if st.session_state.get("authentication_status"):
                         st.error(f"Error al sincronizar: {str(e)}")
             else:
                 st.info("✅ No hay cambios para actualizar.")
-                for i in range(len(pasos)):
-                    col = pasos[i][0]
-                    if estado[col]:
-                        anteriores = [estado[pasos[j][0]] for j in range(i)]
-                        if not all(anteriores):
-                            st.error(f"❌ No se puede marcar '{pasos[i][1]}' sin completar pasos anteriores.")
-                            st.stop()
                 try:
                     with st.spinner("🔄 Sincronizando con la nube..."):
                         now = datetime.now().isoformat(sep=" ", timespec="seconds")
