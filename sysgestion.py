@@ -233,6 +233,13 @@ if st.session_state.get("authentication_status"):
             if cambios_pendientes:
                 if st.button(f"💾 Actualizar {proc_name}"):
                     estado = st.session_state[temp_key]
+                    for i in range(len(pasos)):
+                        col = pasos[i][0]
+                        if estado[col]:
+                            anteriores = [estado[pasos[j][0]] for j in range(i)]
+                            if not all(anteriores):
+                                st.error(f"❌ No se puede marcar '{pasos[i][1]}' sin completar pasos anteriores.")
+                                st.stop()
                 for i in range(len(pasos)):
                     col = pasos[i][0]
                     if estado[col]:
