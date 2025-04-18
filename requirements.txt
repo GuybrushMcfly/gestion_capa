@@ -1,0 +1,16 @@
+streamlit
+streamlit-authenticator>=0.3.0
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+pandas
+matplotlib
+pyparsing
+pillow
+wordcloud
+textblob
+nltk
+pyyaml
+streamlit-echarts
+plotly

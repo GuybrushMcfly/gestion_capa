@@ -1,0 +1,35 @@
+credentials:
+  usernames:
+    carlos:
+      email: carlos@example.com
+      name: Carlos
+      password: '$2b$12$gUAFeTlzBSjMz8V4HfnZL.r5jmDnRcy5Ju7WCCAlWJsMnOoafkP8C'  
+    pbarrientos:
+      email: pilar@example.com
+      name: Pilar
+      password: '$2b$12$jFkjJ7AtyAaXILK/JH0mpe6fnIvK8aHk4/WNLx.MTiVevGwvqgPjq'  
+    dcapone:
+      email: debora@example.com
+      name: Débora
+      password: '$2b$12$5gp5alGaudWyZG1CbWUx1esTXK/uQ9c92WtCiIJPCHtBCqQWKgA/i'  
+    jmolina:
+      email: jose@example.com
+      name: José
+      password: '$2b$12$2nJ8DLPwh/92eI42qCwade4i6SJr3uS73QmYGrMx/H9K0hujWyB2S'  
+    dgreco:
+      email: daniel@example.com
+      name: Daniel
+      password: '$2b$12$mHsnmrnss.kKW63.W1JEneXyL0te1DZOzaNMBAu84u2bqN9zer4..'  
+    pfiorentini:
+      email: pablo@example.com
+      name: Pablo
+      password: '$2b$12$MQpPsx9OotpXNB81nhSaIeztR8oQmOcIn9n2J54G03QDc/IBIM7DO'  
+
+cookie:
+  expiry_days: 1
+  key: abcdef
+  name: encuesta_cookie
+
+
+  
+
