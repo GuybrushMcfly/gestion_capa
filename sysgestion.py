@@ -77,62 +77,88 @@ procesos = {
 }
 
 # ——————————————
-# 4) EDITOR DE CHECKBOXES
+# PREPARAR WORKSHEET Y FILA ACTUAL
 # ——————————————
-st.markdown("## 🛠️ Editar estados por proceso")
+ws_seguimiento = sh.worksheet("seguimiento")
+header       = ws_seguimiento.row_values(1)
+# localizar fila de la comisión actual
+row_idx      = ws_seguimiento.find(str(comision)).row
+
+# ——————————————
+# 4) EDITOR DE CHECKBOXES (ACUMULA cambios)
+# ——————————————
+# Inicializar lista de cambios pendientes
+if "cambios" not in st.session_state:
+    st.session_state["cambios"] = []
+
+st.markdown("## 🛠️ Editar estados por proceso\n*(los cambios se guardan al actualizar)*")
 for proc, pasos in procesos.items():
     st.subheader(proc)
     for col_name, label in pasos:
-        # Estado actual desde Sheets
+        # Valor actual desde Sheets
         valor = bool(fila[col_name])
-        # Deshabilitado si ya es True (no permitimos desmarcar)
+        # Checkbox editable solo si no está marcado
         nuevo = st.checkbox(
             label,
             value=valor,
             disabled=valor,
             key=f"{comision}_{col_name}"
         )
-        # Si marcó un paso nuevo, lo actualizamos en Sheets
-        if nuevo and not valor:
+        # Acumular cambios en memoria
+        if nuevo and not valor and col_name not in st.session_state["cambios"]:
+            st.session_state["cambios"].append(col_name)
+
+# Botón para enviar todos los cambios de golpe
+if st.session_state["cambios"]:
+    if st.button("💾 Actualizar cambios"):
+        for col_name in st.session_state["cambios"]:
             col_idx = header.index(col_name) + 1
-            ws_seguimiento.update_cell(row_idx, col_idx, True)
+            try:
+                ws_seguimiento.update_cell(row_idx, col_idx, True)
+            except Exception as e:
+                st.error(f"Error actualizando {col_name}: {e}")
+        # Recargar datos y fila actualizada
+        df_seguimiento = pd.DataFrame(ws_seguimiento.get_all_records())
+        fila = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
+        row_idx = ws_seguimiento.find(str(comision)).row
+        st.session_state["cambios"].clear()
+        st.success("✅ Cambios actualizados correctamente.")
 
 # ——————————————
-# 5) STEPPER UI DINÁMICO (corregido)
+# 5) STEPPER UI DINÁMICO (con datos frescos)
 # ——————————————
-
 st.markdown("---")
 st.markdown("## 📊 Visualización del avance")
+
+# (Re‐leer df_seguimiento para asegurarnos de tener los últimos valores)
+df_seguimiento = pd.DataFrame(ws_seguimiento.get_all_records())
+fila = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
 
 color_completado = "#4DB6AC"
 color_actual     = "#FF8A65"
 color_pendiente  = "#D3D3D3"
 icono = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
 
-# (Re‐leer df_seguimiento si quieres reflejar cambios al vuelo)
-df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
-fila = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
-
 for proc, pasos in procesos.items():
-    # Extraemos directamente los booleanos desde la fila de pandas
+    # Extraer booleans directamente desde la fila de pandas
     booleans = [ bool(fila[col_name]) for col_name,_ in pasos ]
-    
-    # Calculamos el índice del paso actual
+    # Determinar índice del paso actual
     if all(booleans):
         estado_idx = len(pasos)
     else:
         estado_idx = next(i for i, v in enumerate(booleans) if not v)
 
-    # Armado del gráfico
-    x = list(range(len(pasos)))
+    # Construcción del gráfico
+    x   = list(range(len(pasos)))
     fig = go.Figure()
-    y = 1
+    y   = 1
 
     # Líneas
     for i in range(len(pasos)-1):
         clr = color_completado if i < estado_idx else color_pendiente
         fig.add_trace(go.Scatter(
-            x=[x[i],x[i+1]], y=[y,y],
+            x=[x[i], x[i+1]],
+            y=[y, y],
             mode="lines",
             line=dict(color=clr, width=8),
             showlegend=False
@@ -142,7 +168,7 @@ for proc, pasos in procesos.items():
     for i,(col_name,label) in enumerate(pasos):
         if i < estado_idx:
             clr,ic = color_completado, icono["finalizado"]
-        elif i==estado_idx:
+        elif i == estado_idx:
             clr,ic = color_actual,     icono["actual"]
         else:
             clr,ic = color_pendiente,  icono["pendiente"]
@@ -169,7 +195,8 @@ for proc, pasos in procesos.items():
         title=dict(text=f"🔹 {proc}", x=0.01, xanchor="left", font=dict(size=16)),
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
-        height=180, margin=dict(l=20,r=20,t=30,b=0)
+        height=180,
+        margin=dict(l=20, r=20, t=30, b=0),
     )
     st.plotly_chart(fig)
 
