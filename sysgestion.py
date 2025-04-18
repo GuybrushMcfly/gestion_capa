@@ -118,7 +118,7 @@ with st.expander("🛠️ Editar APROBACIÓN ACTIVIDAD"):
                 label,
                 value=marcado,
                 disabled=marcado,
-                key=f"fa_{col}"
+                key=f"fa_{id_act}_{col}"        # ← incluye el Id_Actividad
             )
             if chk and not marcado:
                 cambios.append(col)
@@ -234,7 +234,7 @@ with st.expander("🛠️ Editar CAMPUS"):
                 label,
                 value=marcado,
                 disabled=marcado,
-                key=f"fc_{col}"
+                key=f"fc_{comision}_{col}"    # ← incluye Id_Comision
             )
             if chk and not marcado:
                 cambios.append(col)
@@ -244,14 +244,11 @@ with st.expander("🛠️ Editar CAMPUS"):
             errores = []
             for col in cambios:
                 try:
-                    # 1) Booleano
                     idx_col = header_seg.index(col) + 1
                     ws_seg.update_cell(row_idx_seg, idx_col, True)
-                    # 2) Usuario
                     ucol = f"{col}_user"
                     idx_u = header_seg.index(ucol) + 1
                     ws_seg.update_cell(row_idx_seg, idx_u, st.session_state["name"])
-                    # 3) Timestamp
                     tcol = f"{col}_timestamp"
                     idx_t = header_seg.index(tcol) + 1
                     now = datetime.now().isoformat(sep=" ", timespec="seconds")
@@ -327,7 +324,6 @@ fig_campus.update_layout(
 )
 st.plotly_chart(fig_campus)
 
-
 # ────────────────────────────────────────────────
 # PASOS DE DICTADO COMISIÓN
 # ────────────────────────────────────────────────
@@ -350,7 +346,7 @@ with st.expander("🛠️ Editar DICTADO COMISIÓN"):
                 label,
                 value=marcado,
                 disabled=marcado,
-                key=f"fd_{col}"
+                key=f"fd_{comision}_{col}"   # ← incluye Id_Comision
             )
             if chk and not marcado:
                 cambios.append(col)
@@ -439,5 +435,4 @@ fig_dict.update_layout(
     height=180, margin=dict(l=20, r=20, t=30, b=0)
 )
 st.plotly_chart(fig_dict)
-
 
