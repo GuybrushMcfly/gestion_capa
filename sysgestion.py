@@ -19,9 +19,6 @@ st.sidebar.image("logo-cap.png", use_container_width=True)
 modo = st.get_option("theme.base")
 color_texto = "#000000" if modo == "light" else "#FFFFFF"
 
-# ────────────────────────────────────────────────
-# 1) FUNCIONES MEJORADAS CON MANEJO DE ERRORES
-# ────────────────────────────────────────────────
 @st.cache_resource
 def get_global_lock():
     return threading.Lock()
@@ -46,12 +43,8 @@ def get_sheet():
                 scopes=["https://www.googleapis.com/auth/spreadsheets"]
             )
             return gspread.authorize(creds).open_by_key("1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk")
-
     return operacion_segura(_get_sheet)
 
-# ────────────────────────────────────────────────
-# 2) CACHE DE DATOS CON REINTENTOS
-# ────────────────────────────────────────────────
 @st.cache_data(ttl=60)
 def cargar_datos():
     def _cargar_datos():
@@ -59,22 +52,16 @@ def cargar_datos():
             hoja = get_sheet()
             hojas_necesarias = ["actividades", "comisiones", "seguimiento"]
             data = {}
-
             for hoja_nombre in hojas_necesarias:
                 ws = operacion_segura(lambda: hoja.worksheet(hoja_nombre))
                 data[hoja_nombre] = operacion_segura(lambda: ws.get_all_records())
-
             return (
                 pd.DataFrame(data["actividades"]),
                 pd.DataFrame(data["comisiones"]),
                 pd.DataFrame(data["seguimiento"])
             )
-
     return operacion_segura(_cargar_datos)
 
-# ────────────────────────────────────────────────
-# 3) DEFINICIÓN DE PASOS Y PERMISOS
-# ────────────────────────────────────────────────
 pasos_act = [
     ("A_Diseño", "Diseño"),
     ("A_AutorizacionINAP", "Autorización INAP"),
@@ -114,11 +101,9 @@ PERMISOS = {
     "INVITADO": {"view": set(PROCESOS), "edit": set()},
 }
 
-# ---- CARGAR CONFIGURACIÓN DE USUARIOS ----
 with open("config.yaml") as file:
     config = yaml.load(file, Loader=SafeLoader)
 
-# ---- AUTENTICACIÓN ----
 authenticator = stauth.Authenticate(
     credentials=config["credentials"],
     cookie_name=config["cookie"]["name"],
@@ -140,11 +125,9 @@ if st.session_state.get("authentication_status"):
     try:
         sh = operacion_segura(get_sheet)
         df_actividades, df_comisiones, df_seguimiento = cargar_datos()
-
         if df_actividades is None or df_comisiones is None or df_seguimiento is None:
             st.error("No se pudieron cargar los datos. Por favor, intenta de nuevo.")
             st.stop()
-
         df_completo = (
             df_comisiones
             .merge(df_actividades[["Id_Actividad", "NombreActividad"]], on="Id_Actividad", how="left")
@@ -178,23 +161,58 @@ if st.session_state.get("authentication_status"):
             continue
 
         st.markdown(f"### {proc_name}")
-        key_base = f"chk_{proc_name}_{id_act}_{comision}"
-        if key_base not in st.session_state:
-            st.session_state[key_base] = {}
+
+        source_row = fila_act if proc_name == "APROBACION" else fila_seg
+        temp_key = f"estado_{proc_name}_{id_act}_{comision}"
+        if temp_key not in st.session_state:
+            st.session_state[temp_key] = {}
             for col, _ in pasos:
-                valor_inicial = bool((fila_act if proc_name == "APROBACION" else fila_seg).get(col, False))
-                st.session_state[key_base][col] = valor_inicial
+                st.session_state[temp_key][col] = bool(source_row.get(col, False))
+
+        # Visualización tipo stepper
+        bools = [st.session_state[temp_key][col] for col, _ in pasos]
+        idx = len(bools) if all(bools) else next((i for i, v in enumerate(bools) if not v), 0)
+        fig = go.Figure()
+        x, y = list(range(len(pasos))), 1
+        color_completado = "#4DB6AC"
+        color_actual = "#FF8A65"
+        color_pendiente = "#D3D3D3"
+        icono = {"finalizado": "✓", "actual": "⏳", "pendiente": "○"}
+
+        for i in range(len(pasos)-1):
+            clr = color_completado if i < idx else color_pendiente
+            fig.add_trace(go.Scatter(x=[x[i], x[i+1]], y=[y, y], mode="lines",
+                                     line=dict(color=clr, width=8), showlegend=False))
 
         for i, (col, label) in enumerate(pasos):
-            st.session_state[key_base][col] = st.checkbox(
-                label,
-                value=st.session_state[key_base][col],
-                key=f"{key_base}_{col}"
-            )
+            estado = st.session_state[temp_key][col]
+            if estado:
+                clr, ic = color_completado, icono["finalizado"]
+            elif i == idx:
+                clr, ic = color_actual, icono["actual"]
+            else:
+                clr, ic = color_pendiente, icono["pendiente"]
+
+            fig.add_trace(go.Scatter(x=[x[i]], y=[y], mode="markers+text",
+                                     marker=dict(size=45, color=clr),
+                                     text=[ic], textposition="middle center",
+                                     textfont=dict(color="white", size=18),
+                                     hovertext=[label], hoverinfo="text", showlegend=False))
+            fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.15], mode="text",
+                                     text=[label], textposition="bottom center",
+                                     textfont=dict(color="white", size=12), showlegend=False))
+
+        fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                          yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
+                          height=180, margin=dict(l=20, r=20, t=30, b=0))
+        st.plotly_chart(fig)
+
+        for col, label in pasos:
+            st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
 
         if proc_name in perms["edit"]:
             if st.button(f"💾 Actualizar {proc_name}"):
-                estado = st.session_state[key_base]
+                estado = st.session_state[temp_key]
                 for i in range(len(pasos)):
                     col = pasos[i][0]
                     if estado[col]:
@@ -202,7 +220,6 @@ if st.session_state.get("authentication_status"):
                         if not all(anteriores):
                             st.error(f"❌ No se puede marcar '{pasos[i][1]}' sin completar pasos anteriores.")
                             st.stop()
-
                 try:
                     with st.spinner("🔄 Sincronizando con la nube..."):
                         now = datetime.now().isoformat(sep=" ", timespec="seconds")
