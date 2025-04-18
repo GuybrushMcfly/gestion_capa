@@ -16,18 +16,53 @@ st.sidebar.image("logo-cap.png", use_container_width=True)
 modo = st.get_option("theme.base")
 color_texto = "#000000" if modo == "light" else "#FFFFFF"
 
+
+# ────────────────────────────────────────────────
+# 1) Definición de las secuencias de pasos
+# ────────────────────────────────────────────────
+pasos_act = [
+    ("A_Diseño",                "Diseño"),
+    ("A_AutorizacionINAP",      "Autorización INAP"),
+    ("A_CargaSAI",              "Carga SAI"),
+    ("A_TramitacionExpediente", "Tramitación Expediente"),
+    ("A_DictamenINAP",          "Dictamen INAP"),
+]
+
+pasos_campus = [
+    ("C_ArmadoAula",           "Armado Aula"),
+    ("C_Matriculacion",        "Matriculación participantes"),
+    ("C_AperturaCurso",        "Apertura Curso"),
+    ("C_CierreCurso",          "Cierre Curso"),
+    ("C_AsistenciaEvaluacion", "Entrega Notas y Asistencia"),
+]
+
+pasos_dictado = [
+    ("D_Difusion",               "Difusión"),
+    ("D_AsignacionVacantes",     "Asignación Vacantes"),
+    ("D_Cursada",                "Cursada"),
+    ("D_AsistenciaEvaluacion",   "Asistencia y Evaluación"),
+    ("D_CreditosSAI",            "Créditos SAI"),
+    ("D_Liquidacion",            "Liquidación"),
+]
+
+# ────────────────────────────────────────────────
+# 2) Ahora sí definimos el diccionario de procesos
+# ────────────────────────────────────────────────
 PROCESOS = {
-    "APROBACION": pasos_act,      # tu lista de steps de Aprobación
-    "CAMPUS":    pasos_campus,    # tu lista de steps de Campus
-    "DICTADO":   pasos_dictado,   # tu lista de steps de Dictado
+    "APROBACION": pasos_act,
+    "CAMPUS":    pasos_campus,
+    "DICTADO":   pasos_dictado,
 }
 
+# ────────────────────────────────────────────────
+# 3) Y por fin los permisos sobre esos procesos
+# ────────────────────────────────────────────────
 PERMISOS = {
-    "ADMIN":   {"view": set(PROCESOS),                   "edit": set(PROCESOS)},
-    "CAMPUS":  {"view": set(PROCESOS),                   "edit": {"CAMPUS"}},
-    "DISEÑO":  {"view": {"APROBACION"},                  "edit": {"APROBACION"}},
-    "DICTADO": {"view": set(PROCESOS),                   "edit": {"DICTADO"}},
-    "INVITADO":{"view": set(PROCESOS),                   "edit": set()},
+    "ADMIN":    {"view": set(PROCESOS),                    "edit": set(PROCESOS)},
+    "CAMPUS":   {"view": set(PROCESOS),                    "edit": {"CAMPUS"}},
+    "DISEÑO":   {"view": {"APROBACION"},                   "edit": {"APROBACION"}},
+    "DICTADO":  {"view": set(PROCESOS),                    "edit": {"DICTADO"}},
+    "INVITADO": {"view": set(PROCESOS),                    "edit": set()},
 }
 
 # ---- CARGAR CONFIGURACIÓN DESDE YAML ----
