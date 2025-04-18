@@ -25,15 +25,28 @@ def get_global_lock():
     return threading.Lock()
 
 @st.cache_resource
-def get_sheet(sheet_key: str):
-    with get_global_lock():  # protege contra concurrencia
+def get_sheet():  # Eliminar el parámetro sheet_key para mejorar el cacheo
+    with get_global_lock():
         creds_dict = json.loads(st.secrets["GOOGLE_CREDS"])
         creds = Credentials.from_service_account_info(
             creds_dict,
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         gc = gspread.authorize(creds)
-        return gc.open_by_key(sheet_key)
+        return gc.open_by_key("1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk")
+
+# Usar el lock también al leer los datos:
+def cargar_datos():
+    with get_global_lock():
+        try:
+            hoja = get_sheet()
+            df_actividades = pd.DataFrame(hoja.worksheet("actividades").get_all_records())
+            df_comisiones = pd.DataFrame(hoja.worksheet("comisiones").get_all_records())
+            df_seguimiento = pd.DataFrame(hoja.worksheet("seguimiento").get_all_records())
+            return df_actividades, df_comisiones, df_seguimiento
+        except Exception as e:
+            st.error(f"Error al cargar datos: {e}")
+            return None, None, None
 
 # ────────────────────────────────────────────────
 # 2) DEFINICIÓN DE PASOS Y PERMISOS
@@ -113,6 +126,11 @@ if st.session_state.get("authentication_status"):
     df_actividades = pd.DataFrame(sh.worksheet("actividades").get_all_records())
     df_comisiones  = pd.DataFrame(sh.worksheet("comisiones").get_all_records())
     df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
+
+    df_actividades, df_comisiones, df_seguimiento = cargar_datos()
+    if df_actividades is None:
+        st.error("No se pudieron cargar los datos. Por favor, intenta de nuevo.")
+        st.stop()
 
     df_completo = (
         df_comisiones
