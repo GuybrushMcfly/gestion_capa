@@ -1,12 +1,12 @@
-import threading
+import threading                              # ← Necesario para el lock compartido
 import json
 from datetime import datetime
 
-import streamlit as st
-import streamlit_authenticator as stauth
 import gspread
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
+import streamlit_authenticator as stauth
 import yaml
 from google.oauth2.service_account import Credentials
 from yaml.loader import SafeLoader
@@ -14,9 +14,11 @@ from yaml.loader import SafeLoader
 # ---- CONFIGURACIÓN DE PÁGINA ----
 st.set_page_config(page_title="Gestión Capacitación DCYCP", layout="wide")
 st.sidebar.image("logo-cap.png", use_container_width=True)
+modo = st.get_option("theme.base")
+color_texto = "#000000" if modo == "light" else "#FFFFFF"
 
 # ────────────────────────────────────────────────
-# 1) GLOBAL LOCK PARA CONEXIÓN A SHEETS
+# 1) GLOBAL LOCK + CACHE DE CONEXIÓN A GOOGLE SHEETS
 # ────────────────────────────────────────────────
 @st.cache_resource
 def get_global_lock():
@@ -24,7 +26,7 @@ def get_global_lock():
 
 @st.cache_resource
 def get_sheet(sheet_key: str):
-    with get_global_lock():
+    with get_global_lock():  # protege contra concurrencia
         creds_dict = json.loads(st.secrets["GOOGLE_CREDS"])
         creds = Credentials.from_service_account_info(
             creds_dict,
@@ -75,15 +77,11 @@ PERMISOS = {
     "INVITADO": {"view": set(PROCESOS),                    "edit": set()},
 }
 
-# ────────────────────────────────────────────────
-# 3) CARGAR CONFIGURACIÓN DE USUARIOS
-# ────────────────────────────────────────────────
-with open("config.yaml") as f:
-    config = yaml.load(f, Loader=SafeLoader)
+# ---- CARGAR CONFIGURACIÓN DE USUARIOS ----
+with open("config.yaml") as file:
+    config = yaml.load(file, Loader=SafeLoader)
 
-# ────────────────────────────────────────────────
-# 4) AUTENTICACIÓN
-# ────────────────────────────────────────────────
+# ---- AUTENTICACIÓN ----
 authenticator = stauth.Authenticate(
     credentials=config["credentials"],
     cookie_name=config["cookie"]["name"],
@@ -93,31 +91,58 @@ authenticator = stauth.Authenticate(
 authenticator.login()
 
 if st.session_state.get("authentication_status"):
-    # Solo aquí entramos si el login fue exitoso
+    # → Solo aquí está garantizado que existe username
     authenticator.logout("Cerrar sesión", "sidebar")
     st.sidebar.success(f"Hola, {st.session_state['name']}")
-    st.markdown("<h1 style='font-size: 30px; color: white;'>Gestión Capacitación DCYCP</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='font-size:30px; color:white;'>Gestión Capacitación DCYCP</h1>",
+                unsafe_allow_html=True)
 
-    # Leer rol y permisos
     username = st.session_state.get("username")
-    user_cfg = config["credentials"]["usernames"].get(username) or {}
+    user_cfg = config["credentials"]["usernames"].get(username, {})
     role     = user_cfg.get("role", "INVITADO")
     perms    = PERMISOS.get(role, PERMISOS["INVITADO"])
+else:
+    if st.session_state.get("authentication_status") is False:
+        st.error("❌ Usuario o contraseña incorrectos.")
+    else:
+        st.warning("🔒 Ingresá tus credenciales para acceder al dashboard.")
+    st.stop()
 
-    # ────────────────────────────────────────────────
-    # 5) CARGA DE DATOS DESDE GOOGLE SHEETS
-    # ────────────────────────────────────────────────
-    SHEET_KEY      = "1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk"
-    sh             = get_sheet(SHEET_KEY)
-    df_actividades = pd.DataFrame(sh.worksheet("actividades").get_all_records())
-    df_comisiones  = pd.DataFrame(sh.worksheet("comisiones").get_all_records())
-    df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
+st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
 
-    df_completo = (
-        df_comisiones
-        .merge(df_actividades[["Id_Actividad","NombreActividad"]], on="Id_Actividad", how="left")
-        .merge(df_seguimiento, on="Id_Comision", how="left")
-    )
+# ────────────────────────────────────────────────
+# 3) CARGA DE DATOS DESDE GOOGLE SHEETS
+# ────────────────────────────────────────────────
+SHEET_KEY      = "1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk"
+sh             = get_sheet(SHEET_KEY)
+df_actividades = pd.DataFrame(sh.worksheet("actividades").get_all_records())
+df_comisiones  = pd.DataFrame(sh.worksheet("comisiones").get_all_records())
+df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
+
+df_completo = (
+    df_comisiones
+    .merge(df_actividades[["Id_Actividad", "NombreActividad"]], on="Id_Actividad", how="left")
+    .merge(df_seguimiento, on="Id_Comision", how="left")
+)
+
+# ────────────────────────────────────────────────
+# 4) SELECCIÓN DE CURSO Y COMISIÓN
+# ────────────────────────────────────────────────
+curso    = st.selectbox("Seleccioná un Curso:", df_actividades["NombreActividad"].unique())
+coms     = df_completo.loc[df_completo["NombreActividad"] == curso, "Id_Comision"].unique().tolist()
+comision = st.selectbox("Seleccioná una Comisión:", coms)
+
+id_act   = df_actividades.loc[df_actividades["NombreActividad"] == curso, "Id_Actividad"].iloc[0]
+fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
+fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
+
+ws_act      = sh.worksheet("actividades")
+header_act  = ws_act.row_values(1)
+row_idx_act = ws_act.find(str(id_act)).row
+
+ws_seg      = sh.worksheet("seguimiento")
+header_seg  = ws_seg.row_values(1)
+row_idx_seg = ws_seg.find(str(comision)).row
 
     # ────────────────────────────────────────────────
     # 6) SELECCIÓN DE CURSO Y COMISIÓN
