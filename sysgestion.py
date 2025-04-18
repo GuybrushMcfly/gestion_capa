@@ -98,8 +98,9 @@ for proc, pasos in procesos.items():
             ws_seguimiento.update_cell(row_idx, col_idx, True)
 
 # ——————————————
-# 5) STEPPER UI DINÁMICO
+# 5) STEPPER UI DINÁMICO (corregido)
 # ——————————————
+
 st.markdown("---")
 st.markdown("## 📊 Visualización del avance")
 
@@ -108,19 +109,25 @@ color_actual     = "#FF8A65"
 color_pendiente  = "#D3D3D3"
 icono = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
 
+# (Re‐leer df_seguimiento si quieres reflejar cambios al vuelo)
+df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
+fila = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
+
 for proc, pasos in procesos.items():
-    # Determinar el primer paso pendiente
-    booleans = [ ws_seguimiento.get(fila[col], default=False) for col,_ in pasos ]
-    # (en pandas: booleans = [fila[col] for col,_ in pasos])
+    # Extraemos directamente los booleanos desde la fila de pandas
+    booleans = [ bool(fila[col_name]) for col_name,_ in pasos ]
+    
+    # Calculamos el índice del paso actual
     if all(booleans):
         estado_idx = len(pasos)
     else:
-        estado_idx = next(i for i,v in enumerate(booleans) if not v)
+        estado_idx = next(i for i, v in enumerate(booleans) if not v)
 
-    # Graficar
+    # Armado del gráfico
     x = list(range(len(pasos)))
     fig = go.Figure()
-    y=1
+    y = 1
+
     # Líneas
     for i in range(len(pasos)-1):
         clr = color_completado if i < estado_idx else color_pendiente
@@ -130,14 +137,16 @@ for proc, pasos in procesos.items():
             line=dict(color=clr, width=8),
             showlegend=False
         ))
-    # Puntos
-    for i,(col,label) in enumerate(pasos):
+
+    # Puntos e íconos
+    for i,(col_name,label) in enumerate(pasos):
         if i < estado_idx:
             clr,ic = color_completado, icono["finalizado"]
         elif i==estado_idx:
             clr,ic = color_actual,     icono["actual"]
         else:
             clr,ic = color_pendiente,  icono["pendiente"]
+
         fig.add_trace(go.Scatter(
             x=[x[i]], y=[y],
             mode="markers+text",
@@ -155,6 +164,7 @@ for proc, pasos in procesos.items():
             textfont=dict(color="white", size=12),
             showlegend=False
         ))
+
     fig.update_layout(
         title=dict(text=f"🔹 {proc}", x=0.01, xanchor="left", font=dict(size=16)),
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
@@ -162,4 +172,5 @@ for proc, pasos in procesos.items():
         height=180, margin=dict(l=20,r=20,t=30,b=0)
     )
     st.plotly_chart(fig)
+
 
