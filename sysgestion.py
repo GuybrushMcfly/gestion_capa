@@ -1,24 +1,40 @@
+import threading
 import json
-from google.oauth2.service_account import Credentials
-import gspread
-import pandas as pd
+from datetime import datetime
+
 import streamlit as st
 import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
-from datetime import datetime
+import gspread
+import pandas as pd
 import plotly.graph_objects as go
+import yaml
+from google.oauth2.service_account import Credentials
+from yaml.loader import SafeLoader
 
 # ---- CONFIGURACIÓN DE PÁGINA ----
 st.set_page_config(page_title="Gestión Capacitación DCYCP", layout="wide")
 st.sidebar.image("logo-cap.png", use_container_width=True)
 
-modo = st.get_option("theme.base")
-color_texto = "#000000" if modo == "light" else "#FFFFFF"
+# ────────────────────────────────────────────────
+# 1) GLOBAL LOCK PARA CONEXIÓN A SHEETS
+# ────────────────────────────────────────────────
+@st.cache_resource
+def get_global_lock():
+    return threading.Lock()
 
+@st.cache_resource
+def get_sheet(sheet_key: str):
+    with get_global_lock():
+        creds_dict = json.loads(st.secrets["GOOGLE_CREDS"])
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        gc = gspread.authorize(creds)
+        return gc.open_by_key(sheet_key)
 
 # ────────────────────────────────────────────────
-# 1) Definición de las secuencias de pasos
+# 2) DEFINICIÓN DE PASOS Y PERMISOS
 # ────────────────────────────────────────────────
 pasos_act = [
     ("A_Diseño",                "Diseño"),
@@ -45,18 +61,12 @@ pasos_dictado = [
     ("D_Liquidacion",            "Liquidación"),
 ]
 
-# ────────────────────────────────────────────────
-# 2) Ahora sí definimos el diccionario de procesos
-# ────────────────────────────────────────────────
 PROCESOS = {
     "APROBACION": pasos_act,
     "CAMPUS":    pasos_campus,
     "DICTADO":   pasos_dictado,
 }
 
-# ────────────────────────────────────────────────
-# 3) Y por fin los permisos sobre esos procesos
-# ────────────────────────────────────────────────
 PERMISOS = {
     "ADMIN":    {"view": set(PROCESOS),                    "edit": set(PROCESOS)},
     "CAMPUS":   {"view": set(PROCESOS),                    "edit": {"CAMPUS"}},
@@ -65,109 +75,201 @@ PERMISOS = {
     "INVITADO": {"view": set(PROCESOS),                    "edit": set()},
 }
 
-# ---- CARGAR CONFIGURACIÓN DESDE YAML ----
-with open("config.yaml") as file:
-    config = yaml.load(file, Loader=SafeLoader)
+# ────────────────────────────────────────────────
+# 3) CARGAR CONFIGURACIÓN DE USUARIOS
+# ────────────────────────────────────────────────
+with open("config.yaml") as f:
+    config = yaml.load(f, Loader=SafeLoader)
 
-# ---- AUTENTICACIÓN ----
+# ────────────────────────────────────────────────
+# 4) AUTENTICACIÓN
+# ────────────────────────────────────────────────
 authenticator = stauth.Authenticate(
-    credentials=config['credentials'],
-    cookie_name=config['cookie']['name'],
-    cookie_key=config['cookie']['key'],
-    cookie_expiry_days=config['cookie']['expiry_days']
+    credentials=config["credentials"],
+    cookie_name=config["cookie"]["name"],
+    cookie_key=config["cookie"]["key"],
+    cookie_expiry_days=config["cookie"]["expiry_days"]
 )
-
 authenticator.login()
 
-if st.session_state["authentication_status"]:
+if st.session_state.get("authentication_status"):
+    # Solo aquí entramos si el login fue exitoso
     authenticator.logout("Cerrar sesión", "sidebar")
     st.sidebar.success(f"Hola, {st.session_state['name']}")
-    st.markdown("""<h1 style='font-size: 30px; color: white;'>Gestión Capacitación DCYCP</h1>""", unsafe_allow_html=True)
-elif st.session_state["authentication_status"] is False:
-    st.error("❌ Usuario o contraseña incorrectos.")
-    st.stop()
-elif st.session_state["authentication_status"] is None:
-    st.warning("🔒 Ingresá tus credenciales para acceder al dashboard.")
-    st.stop()
+    st.markdown("<h1 style='font-size: 30px; color: white;'>Gestión Capacitación DCYCP</h1>", unsafe_allow_html=True)
 
-# Después de authenticator.login() y verificar que auth fue ok:
-username = st.session_state["username"]
-user_cfg = config["credentials"]["usernames"][username]
-role     = user_cfg.get("role", "INVITADO")       # ADMIN, CAMPUS, DISEÑO, DICTADO, INVITADO
-perms    = PERMISOS.get(role, PERMISOS["INVITADO"])
+    # Leer rol y permisos
+    username = st.session_state.get("username")
+    user_cfg = config["credentials"]["usernames"].get(username) or {}
+    role     = user_cfg.get("role", "INVITADO")
+    perms    = PERMISOS.get(role, PERMISOS["INVITADO"])
 
+    # ────────────────────────────────────────────────
+    # 5) CARGA DE DATOS DESDE GOOGLE SHEETS
+    # ────────────────────────────────────────────────
+    SHEET_KEY      = "1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk"
+    sh             = get_sheet(SHEET_KEY)
+    df_actividades = pd.DataFrame(sh.worksheet("actividades").get_all_records())
+    df_comisiones  = pd.DataFrame(sh.worksheet("comisiones").get_all_records())
+    df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
 
-st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-
-
-@st.cache_resource
-def get_sheet(sheet_key: str):
-    # 1) Autorización
-    scope = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_service_account_info(
-        json.loads(st.secrets["GOOGLE_CREDS"]),
-        scopes=scope
+    df_completo = (
+        df_comisiones
+        .merge(df_actividades[["Id_Actividad","NombreActividad"]], on="Id_Actividad", how="left")
+        .merge(df_seguimiento, on="Id_Comision", how="left")
     )
-    gc = gspread.authorize(creds)
-    # 2) Abrir la hoja UNA SOLA VEZ
-    return gc.open_by_key(sheet_key)
 
-# luego en el cuerpo:
-sheet_key = "1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk"
-sh = get_sheet(sheet_key)
+    # ────────────────────────────────────────────────
+    # 6) SELECCIÓN DE CURSO Y COMISIÓN
+    # ────────────────────────────────────────────────
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    curso    = st.selectbox("Seleccioná un Curso:", df_actividades["NombreActividad"].unique())
+    coms     = df_completo.loc[df_completo["NombreActividad"] == curso, "Id_Comision"].unique().tolist()
+    comision = st.selectbox("Seleccioná una Comisión:", coms)
 
+    id_act   = df_actividades.loc[df_actividades["NombreActividad"] == curso, "Id_Actividad"].iloc[0]
+    fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
+    fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
 
-# Leer hojas
-df_actividades = pd.DataFrame(sh.worksheet("actividades").get_all_records())
-df_comisiones  = pd.DataFrame(sh.worksheet("comisiones").get_all_records())
-df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
+    ws_act      = sh.worksheet("actividades")
+    header_act  = ws_act.row_values(1)
+    row_idx_act = ws_act.find(str(id_act)).row
 
-# Merge para facilitar filtros
-df_completo = (
-    df_comisiones
-    .merge(df_actividades[['Id_Actividad','NombreActividad']], on="Id_Actividad", how="left")
-    .merge(df_seguimiento,           on="Id_Comision",     how="left")
-)
+    ws_seg      = sh.worksheet("seguimiento")
+    header_seg  = ws_seg.row_values(1)
+    row_idx_seg = ws_seg.find(str(comision)).row
 
-# ---- SELECCIÓN DE CURSO Y COMISIÓN ----
-curso = st.selectbox(
-    "Seleccioná un Curso:",
-    df_actividades["NombreActividad"].unique()
-)
-coms = df_completo.loc[
-    df_completo["NombreActividad"] == curso, "Id_Comision"
-].unique().tolist()
-comision = st.selectbox("Seleccioná una Comisión:", coms)
+    # Colores e íconos
+    color_completado = "#4DB6AC"
+    color_actual     = "#FF8A65"
+    color_pendiente  = "#D3D3D3"
+    icono           = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
 
-# Obtener fila de actividad y comisión
-id_act   = df_actividades.loc[df_actividades["NombreActividad"] == curso, "Id_Actividad"].iloc[0]
-fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
-fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
+    # ────────────────────────────────────────────────
+    # 7) ITERAR SOBRE CADA PROCESO (vista + edición condicional)
+    # ────────────────────────────────────────────────
+    for proc_name, pasos in PROCESOS.items():
+        # 7.1) Vista (solo si tiene permiso de ver)
+        if proc_name not in perms["view"]:
+            continue
 
-# Prepare worksheets
-ws_act      = sh.worksheet("actividades")
-header_act  = ws_act.row_values(1)
-row_idx_act = ws_act.find(str(id_act)).row
+        # Calcular índice actual
+        source_row = fila_act if proc_name == "APROBACION" else fila_seg
+        bools      = [bool(source_row[col]) for col, _ in pasos]
+        idx        = len(bools) if all(bools) else next(i for i,v in enumerate(bools) if not v)
 
-ws_seg      = sh.worksheet("seguimiento")
-header_seg  = ws_seg.row_values(1)
-row_idx_seg = ws_seg.find(str(comision)).row
+        # Crear figura
+        fig = go.Figure()
+        x, y = list(range(len(pasos))), 1
 
-# ────────────────────────────────────────────────
-# PERMISOS SEGÚN ROL
-# ────────────────────────────────────────────────
-username = st.session_state["username"]
-user_cfg = config["credentials"]["usernames"].get(username, {})
-role     = user_cfg.get("role", "INVITADO")
+        # Líneas
+        for i in range(len(pasos)-1):
+            clr = color_completado if i < idx else color_pendiente
+            fig.add_trace(go.Scatter(
+                x=[x[i], x[i+1]], y=[y, y], mode="lines",
+                line=dict(color=clr, width=8), showlegend=False
+            ))
 
-PERMISOS = {
-    "ADMIN":   {"view": {"APROBACION","CAMPUS","DICTADO"}, "edit": {"APROBACION","CAMPUS","DICTADO"}},
-    "CAMPUS":  {"view": {"APROBACION","CAMPUS","DICTADO"}, "edit": {"CAMPUS"}},
-    "DISEÑO":  {"view": {"APROBACION"},                  "edit": {"APROBACION"}},
-    "DICTADO": {"view": {"APROBACION","CAMPUS","DICTADO"}, "edit": {"DICTADO"}},
-    "INVITADO":{"view": {"APROBACION","CAMPUS","DICTADO"}, "edit": set()},
-}
-perms = PERMISOS.get(role, PERMISOS["INVITADO"])
+        # Puntos + iconos
+        for i,(col,label) in enumerate(pasos):
+            if i < idx:
+                clr, ic = color_completado, icono["finalizado"]
+            elif i == idx:
+                clr, ic = color_actual,     icono["actual"]
+            else:
+                clr, ic = color_pendiente,  icono["pendiente"]
+
+            user = source_row.get(f"{col}_user","")
+            ts   = source_row.get(f"{col}_timestamp","")
+            hover = f"{label}<br>Por: {user}<br>El: {ts}"
+
+            fig.add_trace(go.Scatter(
+                x=[x[i]], y=[y], mode="markers+text",
+                marker=dict(size=45, color=clr),
+                text=[ic], textposition="middle center",
+                textfont=dict(color="white", size=18),
+                hovertext=[hover], hoverinfo="text", showlegend=False
+            ))
+            fig.add_trace(go.Scatter(
+                x=[x[i]], y=[y-0.15], mode="text",
+                text=[label], textposition="bottom center",
+                textfont=dict(color="white", size=12), showlegend=False
+            ))
+
+        fig.update_layout(
+            title=dict(text=f"🔹 {proc_name}", x=0.01, xanchor="left", font=dict(size=16)),
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
+            height=180, margin=dict(l=20, r=20, t=30, b=0),
+        )
+        st.plotly_chart(fig)
+
+        # 7.2) Edición (solo si tiene permiso de editar)
+        if proc_name in perms["edit"]:
+            with st.expander(f"🛠️ Editar {proc_name}"):
+                form_key = f"form_{proc_name}_{id_act}_{comision}"
+                with st.form(form_key):
+                    cambios = []
+                    for col, label in pasos:
+                        marcado = bool(source_row[col])
+                        chk = st.checkbox(
+                            label,
+                            value=marcado,
+                            disabled=marcado,
+                            key=f"{proc_name}_{id_act if proc_name=='APROBACION' else comision}_{col}"
+                        )
+                        if chk and not marcado:
+                            cambios.append(col)
+
+                    submitted = st.form_submit_button(f"💾 Actualizar {proc_name}")
+                    if submitted:
+                        if not cambios:
+                            st.warning("No seleccionaste ningún paso para actualizar.")
+                        else:
+                            errores = []
+                            for col in cambios:
+                                try:
+                                    # Determinar hoja y header según proc
+                                    ws, hdr, ridx = (
+                                        (ws_act, header_act, row_idx_act)
+                                        if proc_name == "APROBACION"
+                                        else (ws_seg, header_seg, row_idx_seg)
+                                    )
+                                    # Booleano
+                                    idx_col = hdr.index(col) + 1
+                                    ws.update_cell(ridx, idx_col, True)
+                                    # Usuario
+                                    ucol = f"{col}_user"
+                                    idx_u = hdr.index(ucol) + 1
+                                    ws.update_cell(ridx, idx_u, st.session_state["name"])
+                                    # Timestamp
+                                    tcol  = f"{col}_timestamp"
+                                    idx_t = hdr.index(tcol) + 1
+                                    now   = datetime.now().isoformat(sep=" ", timespec="seconds")
+                                    ws.update_cell(ridx, idx_t, now)
+                                except Exception as e:
+                                    errores.append((col, str(e)))
+
+                            # Recarga filas
+                            df_actividades = pd.DataFrame(ws_act.get_all_records())
+                            df_seguimiento = pd.DataFrame(ws_seg.get_all_records())
+                            fila_act = df_actividades.loc[df_actividades["Id_Actividad"] == id_act].iloc[0]
+                            fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
+
+                            if errores:
+                                for c,m in errores:
+                                    st.error(f"Error actualizando {c}: {m}")
+                            else:
+                                st.success(f"✅ {proc_name} actualizado!")
+        else:
+            if proc_name in perms["view"]:
+                st.info(f"🔒 No tenés permisos para editar {proc_name}.")
+else:
+    if st.session_state["authentication_status"] is False:
+        st.error("❌ Usuario o contraseña incorrectos.")
+    else:
+        st.warning("🔒 Ingresá tus credenciales para acceder al dashboard.")
+    st.stop()
 
 # Colores e íconos
 color_completado = "#4DB6AC"
