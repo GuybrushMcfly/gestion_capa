@@ -219,4 +219,5 @@ for proc, pasos in procesos.items():
             df_seguimiento = pd.DataFrame(ws_seg.get_all_records())
             fila_seg = df_seguimiento.loc[df_seguimiento["Id_Comision"] == comision].iloc[0]
             st.success("✅ Cambios guardados.")
-            st.session_state[f"editar_{proc}"] = False
+            #st.session_state[f"editar_{proc}"] = False
+            st.session_state[f"editar_{proc}"] = False  # resetear edición al guardar
