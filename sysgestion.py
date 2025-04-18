@@ -45,7 +45,7 @@ elif st.session_state["authentication_status"] is None:
 st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
 # ---- CONFIGURACION ----
-st.set_page_config(page_title="Gestión Capacitación DCYCP", layout="wide")
+#st.set_page_config(page_title="Gestión Capacitación DCYCP", layout="wide")
 
 # ---- CREDENCIALES Y CARGA DE DATOS ----
 scope = ["https://www.googleapis.com/auth/spreadsheets"]
