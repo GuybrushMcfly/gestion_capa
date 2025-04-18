@@ -89,42 +89,80 @@ ws_seg = sh.worksheet("seguimiento")
 header_seg = ws_seg.row_values(1)
 row_idx_seg = ws_seg.find(str(comision)).row
 
-# Colores e íconos (asegurate de hacerlo una sola vez arriba)
+# ────────────────────────────────────────────────
+# PASOS DE APROBACIÓN (definir antes del form)
+# ────────────────────────────────────────────────
+pasos_act = [
+    ("A_Diseño",                  "Diseño"),
+    ("A_AutorizacionINAP",        "Autorización INAP"),
+    ("A_CargaSAI",                "Carga SAI"),
+    ("A_TramitacionExpediente",   "Tramitación Expediente"),
+    ("A_DictamenINAP",            "Dictamen INAP"),
+]
+
+# Colores e íconos (solo una vez)
 color_completado = "#4DB6AC"
 color_actual     = "#FF8A65"
 color_pendiente  = "#D3D3D3"
 icono = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
 
-# 1) Formulario de edición
+# ────────────────────────────────────────────────
+# 1) FORMULARIO EDITAR APROBACIÓN ACTIVIDAD
+# ────────────────────────────────────────────────
 with st.expander("🛠️ Editar APROBACIÓN ACTIVIDAD"):
     with st.form("form_aprob"):
         cambios = []
         for col, label in pasos_act:
             marcado = bool(fila_act[col])
-            chk = st.checkbox(label, value=marcado, disabled=marcado, key=f"fa_{col}")
+            chk = st.checkbox(
+                label,
+                value=marcado,
+                disabled=marcado,
+                key=f"fa_{col}"
+            )
             if chk and not marcado:
                 cambios.append(col)
 
-        if st.form_submit_button("💾 Actualizar APROBACIÓN"):
-            # ... tu código de update_ws_act aquí ...
-            # luego recarga fila_act:
-            df_act = pd.DataFrame(ws_act.get_all_records())
+        submitted = st.form_submit_button("💾 Actualizar APROBACIÓN")
+        if submitted and cambios:
+            errores = []
+            for col in cambios:
+                try:
+                    # 1) Actualizar booleano
+                    col_idx = header_act.index(col) + 1
+                    ws_act.update_cell(row_idx_act, col_idx, True)
+                    # 2) Registrar usuario
+                    ucol    = f"{col}_user"
+                    u_idx   = header_act.index(ucol) + 1
+                    ws_act.update_cell(row_idx_act, u_idx, st.session_state["name"])
+                    # 3) Registrar timestamp
+                    tcol    = f"{col}_timestamp"
+                    t_idx   = header_act.index(tcol) + 1
+                    now_str = datetime.now().isoformat(sep=" ", timespec="seconds")
+                    ws_act.update_cell(row_idx_act, t_idx, now_str)
+                except Exception as e:
+                    errores.append((col, str(e)))
+
+            # recargar fila_act
+            df_act   = pd.DataFrame(ws_act.get_all_records())
             fila_act = df_act.loc[df_act["Id_Actividad"] == id_act].iloc[0]
-            st.success("✅ Aprobación actualizada!")
 
-# 2) STEPPER FIJO DE APROBACIÓN (ahora **después** del form)
-# Recalculamos el índice actual
+            if errores:
+                for c, msg in errores:
+                    st.error(f"Error {c}: {msg}")
+            else:
+                st.success("✅ Aprobación actualizada!")
+
+# ────────────────────────────────────────────────
+# 2) STEPPER FIJO DE APROBACIÓN (después del form)
+# ────────────────────────────────────────────────
 bools_act = [ bool(fila_act[col]) for col,_ in pasos_act ]
-if all(bools_act):
-    idx_act = len(bools_act)
-else:
-    idx_act = next(i for i,v in enumerate(bools_act) if not v)
+idx_act = len(bools_act) if all(bools_act) else next(i for i,v in enumerate(bools_act) if not v)
 
-# Dibujamos el gráfico
 fig_act = go.Figure()
 x = list(range(len(pasos_act))); y = 1
 
-# Líneas
+# líneas
 for i in range(len(pasos_act)-1):
     clr = color_completado if i < idx_act else color_pendiente
     fig_act.add_trace(go.Scatter(
@@ -134,7 +172,7 @@ for i in range(len(pasos_act)-1):
         showlegend=False
     ))
 
-# Puntos e íconos con hover
+# puntos e íconos con hover
 for i, (col, label) in enumerate(pasos_act):
     if i < idx_act:
         clr, ic = color_completado, icono["finalizado"]
@@ -174,5 +212,6 @@ fig_act.update_layout(
     height=180, margin=dict(l=20, r=20, t=30, b=0),
 )
 st.plotly_chart(fig_act)
+
 
 
