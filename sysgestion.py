@@ -174,7 +174,7 @@ if st.session_state.get("authentication_status"):
         idx = len(bools) if all(bools) else next((i for i, v in enumerate(bools) if not v), 0)
         fig = go.Figure()
         #x, y = list(range(len(pasos))), 1
-        x = [i * 0.8 for i in range(len(pasos))]  # o 0.7, según qué tan juntos los quieras
+        x = [i * 0.6 for i in range(len(pasos))]  # o 0.7, según qué tan juntos los quieras
         y = 1
         color_completado = "#4DB6AC"
         color_actual = "#FF8A65"
