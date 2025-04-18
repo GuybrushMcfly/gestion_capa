@@ -4,7 +4,7 @@ credentials:
       email: carlos@example.com
       name: Carlos
       password: '$2b$12$gUAFeTlzBSjMz8V4HfnZL.r5jmDnRcy5Ju7WCCAlWJsMnOoafkP8C'  
-      role: INVITADO
+      role: ADMIN
     pbarrientos:
       email: pilar@example.com
       name: Pilar
