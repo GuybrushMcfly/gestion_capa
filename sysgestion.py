@@ -193,25 +193,11 @@ if st.session_state.get("authentication_status"):
             else:
                 clr, ic = color_pendiente, icono["pendiente"]
 
-            usuario = source_row.get(f"{col}_user", "").strip()
-            timestamp = source_row.get(f"{col}_timestamp", "").strip()
-            hover = label
-            if usuario or timestamp:
-                try:
-                    # Convertir string UTC a datetime y ajustar -3 horas
-                    ts_local = datetime.fromisoformat(timestamp) - pd.Timedelta(hours=3)
-                    timestamp_fmt = ts_local.strftime("%d/%m/%Y %H:%M")
-                    hover += f"<br>ULTIMA EDICIÓN:<br>{usuario} – {timestamp_fmt}"
-                except:
-                    hover += f"<br>ULTIMA EDICIÓN:<br>{usuario} – {timestamp}"
-            else:
-                hover += "<br>Sin información de edición"
-
             fig.add_trace(go.Scatter(x=[x[i]], y=[y], mode="markers+text",
                                      marker=dict(size=45, color=clr),
                                      text=[ic], textposition="middle center",
                                      textfont=dict(color="white", size=18),
-                                     hovertext=[hover], hoverinfo="text", showlegend=False))
+                                     hovertext=[label], hoverinfo="text", showlegend=False))
             fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.15], mode="text",
                                      text=[label], textposition="bottom center",
                                      textfont=dict(color="white", size=12), showlegend=False))
@@ -227,35 +213,15 @@ if st.session_state.get("authentication_status"):
                     st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
 
         if proc_name in perms["edit"]:
-            original_estado = {col: bool(source_row.get(col, False)) for col, _ in pasos}
-            cambios_pendientes = any(st.session_state[temp_key][col] != original_estado[col] for col, _ in pasos)
-
-            estado = st.session_state[temp_key]
-            if cambios_pendientes:
-                if st.button(f"💾 Actualizar {proc_name}"):
-                    
-                    try:
-                        with st.spinner("🔄 Sincronizando con la nube..."):
-                            now = datetime.now().isoformat(sep=" ", timespec="seconds")
-                            ws = operacion_segura(lambda: sh.worksheet("actividades" if proc_name == "APROBACION" else "seguimiento"))
-                            header = operacion_segura(lambda: ws.row_values(1))
-                            row_idx = operacion_segura(lambda: ws.find(str(id_act if proc_name == "APROBACION" else comision))).row
-                            for col, _ in pasos:
-                                idx_col = header.index(col) + 1
-                                ucol = f"{col}_user"
-                                tcol = f"{col}_timestamp"
-                                idx_u = header.index(ucol) + 1
-                                idx_t = header.index(tcol) + 1
-                                operacion_segura(lambda: ws.update_cell(row_idx, idx_col, estado[col]))
-                                operacion_segura(lambda: ws.update_cell(row_idx, idx_u, st.session_state["name"]))
-                                operacion_segura(lambda: ws.update_cell(row_idx, idx_t, now))
-                            st.success("✅ Datos actualizados correctamente")
-                            cargar_datos.clear()
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al sincronizar: {str(e)}")
-            else:
-                st.info("✅ No hay cambios para actualizar.")
+            if st.button(f"💾 Actualizar {proc_name}"):
+                estado = st.session_state[temp_key]
+                for i in range(len(pasos)):
+                    col = pasos[i][0]
+                    if estado[col]:
+                        anteriores = [estado[pasos[j][0]] for j in range(i)]
+                        if not all(anteriores):
+                            st.error(f"❌ No se puede marcar '{pasos[i][1]}' sin completar pasos anteriores.")
+                            st.stop()
                 try:
                     with st.spinner("🔄 Sincronizando con la nube..."):
                         now = datetime.now().isoformat(sep=" ", timespec="seconds")
