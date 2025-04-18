@@ -358,13 +358,3 @@ for proc_name, pasos in PROCESOS.items():
         if proc_name in perms["view"]:
             st.info(f"🔒 No tenés permisos para editar {proc_name}.")
 
-        except Exception as e:
-            st.error(f"Error inesperado: {str(e)}")
-            st.stop()
-
-    else:
-        if st.session_state.get("authentication_status") is False:
-            st.error("❌ Usuario o contraseña incorrectos.")
-        else:
-            st.warning("🔒 Ingresá tus credenciales para acceder.")
-    st.stop()
