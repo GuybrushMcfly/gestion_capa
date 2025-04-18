@@ -213,5 +213,231 @@ fig_act.update_layout(
 )
 st.plotly_chart(fig_act)
 
+# ────────────────────────────────────────────────
+# PASOS DE CAMPUS
+# ────────────────────────────────────────────────
+pasos_campus = [
+    ("C_ArmadoAula",           "Armado Aula"),
+    ("C_Matriculacion",        "Matriculación participantes"),
+    ("C_AperturaCurso",        "Apertura Curso"),
+    ("C_CierreCurso",          "Cierre Curso"),
+    ("C_AsistenciaEvaluacion", "Entrega Notas y Asistencia"),
+]
+
+# 1) FORMULARIO EDITAR CAMPUS
+with st.expander("🛠️ Editar CAMPUS"):
+    with st.form("form_campus"):
+        cambios = []
+        for col, label in pasos_campus:
+            marcado = bool(fila_seg[col])
+            chk = st.checkbox(
+                label,
+                value=marcado,
+                disabled=marcado,
+                key=f"fc_{col}"
+            )
+            if chk and not marcado:
+                cambios.append(col)
+
+        submitted = st.form_submit_button("💾 Actualizar CAMPUS")
+        if submitted and cambios:
+            errores = []
+            for col in cambios:
+                try:
+                    # 1) Booleano
+                    idx_col = header_seg.index(col) + 1
+                    ws_seg.update_cell(row_idx_seg, idx_col, True)
+                    # 2) Usuario
+                    ucol = f"{col}_user"
+                    idx_u = header_seg.index(ucol) + 1
+                    ws_seg.update_cell(row_idx_seg, idx_u, st.session_state["name"])
+                    # 3) Timestamp
+                    tcol = f"{col}_timestamp"
+                    idx_t = header_seg.index(tcol) + 1
+                    now = datetime.now().isoformat(sep=" ", timespec="seconds")
+                    ws_seg.update_cell(row_idx_seg, idx_t, now)
+                except Exception as e:
+                    errores.append((col, str(e)))
+
+            # recarga de fila_seg
+            df_seg   = pd.DataFrame(ws_seg.get_all_records())
+            fila_seg = df_seg.loc[df_seg["Id_Comision"] == comision].iloc[0]
+
+            if errores:
+                for c, m in errores:
+                    st.error(f"Error {c}: {m}")
+            else:
+                st.success("✅ Campus actualizado!")
+
+# 2) STEPPER CAMPUS (después del form)
+bools_campus = [ bool(fila_seg[col]) for col,_ in pasos_campus ]
+idx_campus = len(bools_campus) if all(bools_campus) else next(i for i,v in enumerate(bools_campus) if not v)
+
+fig_campus = go.Figure()
+x = list(range(len(pasos_campus))); y = 1
+
+# líneas
+for i in range(len(pasos_campus)-1):
+    clr = color_completado if i < idx_campus else color_pendiente
+    fig_campus.add_trace(go.Scatter(
+        x=[x[i], x[i+1]], y=[y, y],
+        mode="lines",
+        line=dict(color=clr, width=8),
+        showlegend=False
+    ))
+
+# puntos + hover
+for i, (col, label) in enumerate(pasos_campus):
+    if i < idx_campus:
+        clr, ic = color_completado, icono["finalizado"]
+    elif i == idx_campus:
+        clr, ic = color_actual,     icono["actual"]
+    else:
+        clr, ic = color_pendiente,  icono["pendiente"]
+
+    user = fila_seg.get(f"{col}_user", "")
+    ts   = fila_seg.get(f"{col}_timestamp", "")
+    hover = f"{label}<br>Por: {user}<br>El: {ts}"
+
+    fig_campus.add_trace(go.Scatter(
+        x=[x[i]], y=[y],
+        mode="markers+text",
+        marker=dict(size=45, color=clr),
+        text=[ic],
+        textposition="middle center",
+        textfont=dict(color="white", size=18),
+        hovertext=[hover],
+        hoverinfo="text",
+        showlegend=False
+    ))
+    fig_campus.add_trace(go.Scatter(
+        x=[x[i]], y=[y-0.15],
+        mode="text",
+        text=[label],
+        textposition="bottom center",
+        textfont=dict(color="white", size=12),
+        showlegend=False
+    ))
+
+fig_campus.update_layout(
+    title=dict(text="🔹 CAMPUS", x=0.01, xanchor="left", font=dict(size=16)),
+    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
+    height=180, margin=dict(l=20, r=20, t=30, b=0)
+)
+st.plotly_chart(fig_campus)
+
+
+# ────────────────────────────────────────────────
+# PASOS DE DICTADO COMISIÓN
+# ────────────────────────────────────────────────
+pasos_dictado = [
+    ("D_Difusion",               "Difusión"),
+    ("D_AsignacionVacantes",     "Asignación Vacantes"),
+    ("D_Cursada",                "Cursada"),
+    ("D_AsistenciaEvaluacion",   "Asistencia y Evaluación"),
+    ("D_CreditosSAI",            "Créditos SAI"),
+    ("D_Liquidacion",            "Liquidación"),
+]
+
+# 1) FORMULARIO EDITAR DICTADO
+with st.expander("🛠️ Editar DICTADO COMISIÓN"):
+    with st.form("form_dictado"):
+        cambios = []
+        for col, label in pasos_dictado:
+            marcado = bool(fila_seg[col])
+            chk = st.checkbox(
+                label,
+                value=marcado,
+                disabled=marcado,
+                key=f"fd_{col}"
+            )
+            if chk and not marcado:
+                cambios.append(col)
+
+        submitted = st.form_submit_button("💾 Actualizar DICTADO")
+        if submitted and cambios:
+            errores = []
+            for col in cambios:
+                try:
+                    idx_col = header_seg.index(col) + 1
+                    ws_seg.update_cell(row_idx_seg, idx_col, True)
+                    ucol    = f"{col}_user"
+                    idx_u   = header_seg.index(ucol) + 1
+                    ws_seg.update_cell(row_idx_seg, idx_u, st.session_state["name"])
+                    tcol    = f"{col}_timestamp"
+                    idx_t   = header_seg.index(tcol) + 1
+                    now     = datetime.now().isoformat(sep=" ", timespec="seconds")
+                    ws_seg.update_cell(row_idx_seg, idx_t, now)
+                except Exception as e:
+                    errores.append((col, str(e)))
+
+            # recarga fila_seg
+            df_seg   = pd.DataFrame(ws_seg.get_all_records())
+            fila_seg = df_seg.loc[df_seg["Id_Comision"] == comision].iloc[0]
+
+            if errores:
+                for c, m in errores:
+                    st.error(f"Error {c}: {m}")
+            else:
+                st.success("✅ Dictado actualizado!")
+
+# 2) STEPPER DICTADO COMISIÓN (después del form)
+bools_dict = [ bool(fila_seg[col]) for col,_ in pasos_dictado ]
+idx_dict   = len(bools_dict) if all(bools_dict) else next(i for i,v in enumerate(bools_dict) if not v)
+
+fig_dict = go.Figure()
+x = list(range(len(pasos_dictado))); y = 1
+
+# líneas
+for i in range(len(pasos_dictado)-1):
+    clr = color_completado if i < idx_dict else color_pendiente
+    fig_dict.add_trace(go.Scatter(
+        x=[x[i], x[i+1]], y=[y, y],
+        mode="lines",
+        line=dict(color=clr, width=8),
+        showlegend=False
+    ))
+
+# puntos e íconos con hover
+for i, (col, label) in enumerate(pasos_dictado):
+    if i < idx_dict:
+        clr, ic = color_completado, icono["finalizado"]
+    elif i == idx_dict:
+        clr, ic = color_actual,     icono["actual"]
+    else:
+        clr, ic = color_pendiente,  icono["pendiente"]
+
+    user = fila_seg.get(f"{col}_user", "")
+    ts   = fila_seg.get(f"{col}_timestamp", "")
+    hover = f"{label}<br>Por: {user}<br>El: {ts}"
+
+    fig_dict.add_trace(go.Scatter(
+        x=[x[i]], y=[y],
+        mode="markers+text",
+        marker=dict(size=45, color=clr),
+        text=[ic],
+        textposition="middle center",
+        textfont=dict(color="white", size=18),
+        hovertext=[hover],
+        hoverinfo="text",
+        showlegend=False
+    ))
+    fig_dict.add_trace(go.Scatter(
+        x=[x[i]], y=[y-0.15],
+        mode="text",
+        text=[label],
+        textposition="bottom center",
+        textfont=dict(color="white", size=12),
+        showlegend=False
+    ))
+
+fig_dict.update_layout(
+    title=dict(text="🔹 DICTADO COMISIÓN", x=0.01, xanchor="left", font=dict(size=16)),
+    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
+    height=180, margin=dict(l=20, r=20, t=30, b=0)
+)
+st.plotly_chart(fig_dict)
 
 
