@@ -205,7 +205,8 @@ if st.session_state.get("authentication_status"):
         fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                           yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
                           height=180, margin=dict(l=20, r=20, t=30, b=0))
-        st.plotly_chart(fig)
+        #st.plotly_chart(fig)
+        st.plotly_chart(fig, config={"displayModeBar": False}) #ocultar iconos de las barras
 
         if proc_name in perms["edit"]:
             with st.expander(f"🛠️ Editar {proc_name}"):
