@@ -75,7 +75,7 @@ pasos_campus = [
     ("C_Matriculacion", "Matriculación participantes"),
     ("C_AperturaCurso", "Apertura Curso"),
     ("C_CierreCurso", "Cierre Curso"),
-    ("C_AsistenciaEvaluacion", "Entrega Notas y Asistencia"),
+    ("C_AsistenciaEvaluacion", "Entrega Notas\n y Asistencia"),
 ]
 
 pasos_dictado = [
