@@ -1,10 +1,48 @@
-import streamlit as st
-import plotly.graph_objects as go
-from datetime import datetime
+import json
 from google.oauth2.service_account import Credentials
 import gspread
-import json
 import pandas as pd
+import matplotlib.pyplot as plt
+import streamlit as st
+import streamlit_authenticator as stauth
+import yaml
+from yaml.loader import SafeLoader
+from streamlit_echarts import st_echarts
+#import seaborn as sns
+
+# ---- CONFIGURACIÓN DE PÁGINA ----
+st.set_page_config(page_title="Gestión Capacitación DCYCP", layout="wide")
+st.sidebar.image("logo-cap.png", use_container_width=True)
+
+modo = st.get_option("theme.base")
+color_texto = "#000000" if modo == "light" else "#FFFFFF"
+
+# ---- CARGAR CONFIGURACIÓN DESDE YAML ----
+with open("config.yaml") as file:
+    config = yaml.load(file, Loader=SafeLoader)
+
+# ---- AUTENTICACIÓN ----
+authenticator = stauth.Authenticate(
+    credentials=config['credentials'],
+    cookie_name=config['cookie']['name'],
+    cookie_key=config['cookie']['key'],
+    cookie_expiry_days=config['cookie']['expiry_days']
+)
+
+authenticator.login()
+
+if st.session_state["authentication_status"]:
+    authenticator.logout("Cerrar sesión", "sidebar")
+    st.sidebar.success(f"Hola, {st.session_state['name']}")
+    st.markdown("""<h1 style='font-size: 30px; color: white;'>Gestión Capacitación DCYCP</h1>""", unsafe_allow_html=True)
+elif st.session_state["authentication_status"] is False:
+    st.error("❌ Usuario o contraseña incorrectos.")
+    st.stop()
+elif st.session_state["authentication_status"] is None:
+    st.warning("🔒 Ingresá tus credenciales para acceder al dashboard.")
+    st.stop()
+
+st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
 # ---- CONFIGURACION ----
 st.set_page_config(page_title="Gestión Capacitación DCYCP", layout="wide")
