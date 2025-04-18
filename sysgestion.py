@@ -198,9 +198,9 @@ if st.session_state.get("authentication_status"):
                                      text=[ic], textposition="middle center",
                                      textfont=dict(color="white", size=18),
                                      hovertext=[label], hoverinfo="text", showlegend=False))
-            fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.15], mode="text",
+            fig.add_trace(go.Scatter(x=[x[i]], y=[y-0.2], mode="text",
                                      text=[label], textposition="bottom center",
-                                     textfont=dict(color="white", size=12), showlegend=False))
+                                     textfont=dict(color="white", size=14), showlegend=False))
 
         fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                           yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[0.3,1.2]),
