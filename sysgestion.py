@@ -25,7 +25,7 @@ def get_global_lock():
     return threading.Lock()
 
 @st.cache_resource
-def get_sheet():  # Eliminar el parámetro sheet_key para mejorar el cacheo
+def get_sheet():  # ya no recibe sheet_key
     with get_global_lock():
         creds_dict = json.loads(st.secrets["GOOGLE_CREDS"])
         creds = Credentials.from_service_account_info(
@@ -33,6 +33,7 @@ def get_sheet():  # Eliminar el parámetro sheet_key para mejorar el cacheo
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         gc = gspread.authorize(creds)
+        # aquí puedes poner tu KEY directamente o usar una constante
         return gc.open_by_key("1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk")
 
 # Usar el lock también al leer los datos:
@@ -84,7 +85,6 @@ PROCESOS = {
 
 PERMISOS = {
     "ADMIN":    {"view": set(PROCESOS),                    "edit": set(PROCESOS)},
-    #"CAMPUS":   {"view": set(PROCESOS),                    "edit": {"CAMPUS"}},
     "CAMPUS":   {"view": {"CAMPUS", "DICTADO"},            "edit": {"CAMPUS"}},
     "DISEÑO":   {"view": {"APROBACION"},                   "edit": {"APROBACION"}},
     "DICTADO":  {"view": set(PROCESOS),                    "edit": {"DICTADO"}},
@@ -116,22 +116,15 @@ if st.session_state.get("authentication_status"):
     role     = user_cfg.get("role", "INVITADO")
     perms    = PERMISOS.get(role, PERMISOS["INVITADO"])
 
-    st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
-
     # ────────────────────────────────────────────────
     # 3) CARGA DE DATOS DESDE GOOGLE SHEETS
     # ────────────────────────────────────────────────
-    SHEET_KEY      = "1uYHnALX3TCaSzqJJFESOf8OpiaxKbLFYAQdcKFqbGrk"
-    sh             = get_sheet(SHEET_KEY)
-    df_actividades = pd.DataFrame(sh.worksheet("actividades").get_all_records())
-    df_comisiones  = pd.DataFrame(sh.worksheet("comisiones").get_all_records())
-    df_seguimiento = pd.DataFrame(sh.worksheet("seguimiento").get_all_records())
-
+    sh = get_sheet()  # ← aquí quitamos el parámetro
     df_actividades, df_comisiones, df_seguimiento = cargar_datos()
     if df_actividades is None:
         st.error("No se pudieron cargar los datos. Por favor, intenta de nuevo.")
         st.stop()
-
+    
     df_completo = (
         df_comisiones
         .merge(df_actividades[["Id_Actividad", "NombreActividad"]], on="Id_Actividad", how="left")
@@ -161,7 +154,7 @@ if st.session_state.get("authentication_status"):
     color_completado = "#4DB6AC"
     color_actual     = "#FF8A65"
     color_pendiente  = "#D3D3D3"
-    icono           = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
+    icono            = {"finalizado":"⚪","actual":"⏳","pendiente":"⚪"}
 
     # ────────────────────────────────────────────────
     # 5) ITERAR SOBRE CADA PROCESO (vista + edición condicional)
