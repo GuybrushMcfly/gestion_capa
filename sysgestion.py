@@ -227,7 +227,7 @@ if st.session_state.get("authentication_status"):
                     try:
                         with st.spinner("🔄 Sincronizando con la nube..."):
                             now = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).isoformat(sep=" ", timespec="seconds")
-                                    ws = operacion_segura(lambda: sh.worksheet("actividades" if proc_name == "APROBACION" else "seguimiento"))
+                            ws = operacion_segura(lambda: sh.worksheet("actividades" if proc_name == "APROBACION" else "seguimiento"))
                             header = operacion_segura(lambda: ws.row_values(1))
                             row_idx = operacion_segura(lambda: ws.find(str(id_act if proc_name == "APROBACION" else comision))).row
                             for col, _ in pasos:
