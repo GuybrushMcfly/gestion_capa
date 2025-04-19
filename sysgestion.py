@@ -173,7 +173,11 @@ if st.session_state.get("authentication_status"):
         bools = [st.session_state[temp_key][col] for col, _ in pasos]
         idx = len(bools) if all(bools) else next((i for i, v in enumerate(bools) if not v), 0)
         fig = go.Figure()
-        x, y = list(range(len(pasos))), 1
+        #x, y = list(range(len(pasos))), 1
+
+        espaciado = 0.7  # modificá este valor para ajustar
+        x = [i * espaciado for i in range(len(pasos))]
+        y = 1
         
         color_completado = "#4DB6AC"
         color_actual = "#FF8A65"
