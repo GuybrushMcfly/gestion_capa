@@ -175,7 +175,7 @@ if st.session_state.get("authentication_status"):
         fig = go.Figure()
         #x, y = list(range(len(pasos))), 1
 
-        espaciado = 0.7  # modificá este valor para ajustar
+        espaciado = 0.5  # modificá este valor para ajustar
         x = [i * espaciado for i in range(len(pasos))]
         y = 1
         
