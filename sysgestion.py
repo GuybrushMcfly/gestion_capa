@@ -211,20 +211,42 @@ if st.session_state.get("authentication_status"):
         st.plotly_chart(fig, config={"displayModeBar": False}) #ocultar iconos de las barras
 
         if proc_name in perms["edit"]:
-            with st.expander(f"🛠️ EDITAR {proc_name}"):
+            with st.expander(f"🛠️ Editar {proc_name}"):
+                temp_estado = {}
                 for col, label in pasos:
-                    st.session_state[temp_key][col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}")
+                    temp_estado[col] = st.checkbox(label, value=st.session_state[temp_key][col], key=f"{temp_key}_{col}_temp")
 
-        if proc_name in perms["edit"]:
-            if st.button(f"💾 Actualizar {proc_name}"):
-                estado = st.session_state[temp_key]
-                for i in range(len(pasos)):
-                    col = pasos[i][0]
-                    if estado[col]:
-                        anteriores = [estado[pasos[j][0]] for j in range(i)]
-                        if not all(anteriores):
-                            st.error(f"❌ No se puede marcar '{pasos[i][1]}' sin completar pasos anteriores.")
-                            st.stop()
+                if st.button(f"💾 Actualizar {proc_name}"):
+                    for i in range(len(pasos)):
+                        col = pasos[i][0]
+                        if temp_estado[col]:
+                            anteriores = [temp_estado[pasos[j][0]] for j in range(i)]
+                            if not all(anteriores):
+                                st.error(f"❌ No se puede marcar '{pasos[i][1]}' sin completar pasos anteriores.")
+                                st.stop()
+                    try:
+                        with st.spinner("🔄 Sincronizando con la nube..."):
+                            now = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).isoformat(sep=" ", timespec="seconds")
+                                    ws = operacion_segura(lambda: sh.worksheet("actividades" if proc_name == "APROBACION" else "seguimiento"))
+                            header = operacion_segura(lambda: ws.row_values(1))
+                            row_idx = operacion_segura(lambda: ws.find(str(id_act if proc_name == "APROBACION" else comision))).row
+                            for col, _ in pasos:
+                                idx_col = header.index(col) + 1
+                                ucol = f"{col}_user"
+                                tcol = f"{col}_timestamp"
+                                idx_u = header.index(ucol) + 1
+                                idx_t = header.index(tcol) + 1
+                                operacion_segura(lambda: ws.update_cell(row_idx, idx_col, temp_estado[col]))
+                                operacion_segura(lambda: ws.update_cell(row_idx, idx_u, st.session_state["name"]))
+                                operacion_segura(lambda: ws.update_cell(row_idx, idx_t, now))
+                            # ✅ Solo ahora se actualiza el estado real
+                            st.session_state[temp_key] = temp_estado
+                            st.success("✅ Datos actualizados correctamente")
+                            cargar_datos.clear()
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al sincronizar: {str(e)}")
+
                 try:
                     with st.spinner("🔄 Sincronizando con la nube..."):
                         now = datetime.now().isoformat(sep=" ", timespec="seconds")
