@@ -1,6 +1,6 @@
 import threading
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import random
 import gspread
@@ -226,7 +226,7 @@ if st.session_state.get("authentication_status"):
                                 st.stop()
                     try:
                         with st.spinner("🔄 Sincronizando con la nube..."):
-                            now = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).isoformat(sep=" ", timespec="seconds")
+                            now = (datetime.now() - timedelta(hours=3)).isoformat(sep=" ", timespec="seconds")
                             ws = operacion_segura(lambda: sh.worksheet("actividades" if proc_name == "APROBACION" else "seguimiento"))
                             header = operacion_segura(lambda: ws.row_values(1))
                             row_idx = operacion_segura(lambda: ws.find(str(id_act if proc_name == "APROBACION" else comision))).row
@@ -246,27 +246,6 @@ if st.session_state.get("authentication_status"):
                             st.rerun()
                     except Exception as e:
                         st.error(f"Error al sincronizar: {str(e)}")
-
-                try:
-                    with st.spinner("🔄 Sincronizando con la nube..."):
-                        now = datetime.now().isoformat(sep=" ", timespec="seconds")
-                        ws = operacion_segura(lambda: sh.worksheet("actividades" if proc_name == "APROBACION" else "seguimiento"))
-                        header = operacion_segura(lambda: ws.row_values(1))
-                        row_idx = operacion_segura(lambda: ws.find(str(id_act if proc_name == "APROBACION" else comision))).row
-                        for col, _ in pasos:
-                            idx_col = header.index(col) + 1
-                            ucol = f"{col}_user"
-                            tcol = f"{col}_timestamp"
-                            idx_u = header.index(ucol) + 1
-                            idx_t = header.index(tcol) + 1
-                            operacion_segura(lambda: ws.update_cell(row_idx, idx_col, estado[col]))
-                            operacion_segura(lambda: ws.update_cell(row_idx, idx_u, st.session_state["name"]))
-                            operacion_segura(lambda: ws.update_cell(row_idx, idx_t, now))
-                        st.success("✅ Datos actualizados correctamente")
-                        cargar_datos.clear()
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Error al sincronizar: {str(e)}")
     #    else:
     #        st.info(f"🔒 No tenés permisos para editar {proc_name}.")
 
